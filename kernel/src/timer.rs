@@ -1,7 +1,6 @@
 
 use embedded_time::Instant;
 use embedded_time::Clock;
-use embedded_time::duration;
 
 pub struct TIMER;
 
@@ -83,7 +82,7 @@ impl TimeInteration {
     pub fn loop_<F>(&mut self, mut _l: F)
         where  F: FnMut(&mut Self)
     {
-        while self._duration.map_or(true, |dur| self._t < dur) {
+        while self._duration.map_or(true, |dur| self._t < dur) || self._duration == None {
             _l(self);
             
             if self._close { 
