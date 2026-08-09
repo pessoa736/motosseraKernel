@@ -1,12 +1,10 @@
 use core::cell::UnsafeCell;
+use alloc::vec::Vec;
 use limine::{framebuffer::{Framebuffer}, request::FramebufferRequest};
-use na::{Const, Matrix, SMatrix, SMatrixViewMut, ViewStorageMut};
+use na::{Const, Matrix, MatrixView, SMatrix, SMatrixViewMut, ViewStorage, ViewStorageMut};
 // use naive_timer::Timer;
-use spin::{LazyLock, Mutex};
-use crate::{db_font, debuglog::dprint, timer::{
-    // SubTimer, TIMER, 
-    TimeInteration
-}};
+use spin::{LazyLock, Mutex, mutex::Mutex};
+use crate::{db_font, debuglog::dprint, timer::TimeInteration, utils::SafeMatrix};
 use core::mem::MaybeUninit;
 
 
@@ -28,39 +26,61 @@ pub const TRANSPARENT: u32 = 0x0;
 /// ```
 /// 
 pub struct MaskColor
-{ rgb: UnsafeCell<SMatrix<u8, 3,2>> }
+{ 
+    rgb: SafeMatrix<u8, 3,2> 
+}
 
 type ColorRow = SMatrix<u8, 1, 2>;
 
 impl MaskColor 
 {
-    
+
     #[inline(always)]
-    pub fn get_rgb(&mut self) -> &mut SMatrix<u8, 3, 2>
-    { 
-        unsafe {&mut *self.rgb.get()} 
+    pub fn get_sizes(&mut self) -> MatrixView<'_, u8, Const<3>, Const<1>>
+    {
+        let guard = self.rgb.get_mut();
+        let rgb = unsafe { guard.assume_init_mut() };
+        (*rgb).column(1)
+    }
+
+
+    #[inline(always)]
+    pub fn get_shifts(&mut self) ->  MatrixView<'_, u8, Const<3>, Const<1>>
+    {
+        let guard = self.rgb.get_mut();
+        let rgb = unsafe { guard.assume_init_mut() };
+        (*rgb).column(0)
+    }
+    pub fn set_shifts(&mut self, shifts: Vec<u8>)
+    {
+        let guard = self.rgb.get_mut();
+        let rgb = unsafe { guard.assume_init_mut() };
+        (*rgb).column_mut(0).vec
     }
 
     #[inline(always)]
-    pub fn get_sizes(&mut self) -> SMatrixViewMut<'_, u8, 3, 1>
-    {self.get_rgb().column_mut(1)}
-
-
-    #[inline(always)]
-    pub fn get_shifts(&mut self) -> SMatrixViewMut<'_, u8, 3, 1>
-    {self.get_rgb().column_mut(0)}
-
-    #[inline(always)]
-    pub fn get_red(&mut self) -> Matrix<u8, Const<1>, Const<2>, ViewStorageMut<'_, u8, Const<1>, Const<2>, Const<1>, Const<3>>>
-    {self.get_rgb().row_mut(0)}
+    pub fn get_red(&mut self) -> Matrix<u8, Const<1>, Const<2>, ViewStorage<'_, u8, Const<1>, Const<2>, Const<1>, Const<3>>>
+    {
+        let guard = self.rgb.get_mut();
+        let rgb = unsafe { guard.assume_init_mut() };
+        (*rgb).row(0)
+    }
 
     #[inline(always)]
-    pub fn get_green(&mut self) -> Matrix<u8, Const<1>, Const<2>, ViewStorageMut<'_, u8, Const<1>, Const<2>, Const<1>, Const<3>>>
-    {self.get_rgb().row_mut(1)}
+    pub fn get_green(&mut self) -> Matrix<u8, Const<1>, Const<2>, ViewStorage<'_, u8, Const<1>, Const<2>, Const<1>, Const<3>>>
+    {
+        let guard = self.rgb.get_mut();
+        let rgb = unsafe { guard.assume_init_mut() };
+        (*rgb).row(1)
+    }
 
     #[inline(always)]
-    pub fn get_blue(&mut self) -> Matrix<u8, Const<1>, Const<2>, ViewStorageMut<'_, u8, Const<1>, Const<2>, Const<1>, Const<3>>>
-    {self.get_rgb().row_mut(2)}
+    pub fn get_blue(&mut self)-> Matrix<u8, Const<1>, Const<2>, ViewStorage<'_, u8, Const<1>, Const<2>, Const<1>, Const<3>>>
+    {
+        let guard = self.rgb.get_mut();
+        let rgb = unsafe { guard.assume_init_mut() };
+        (*rgb).row(2)
+    }
 
     
 
@@ -76,14 +96,17 @@ impl MaskColor
     /// ```
     /// 
     #[inline(always)]
-    pub fn new() -> Self 
-    {Self{ rgb: UnsafeCell::new(SMatrix::zeros()) }} 
+    pub const fn new_const() -> Self 
+    {Self{ rgb: Mutex::new(MaybeUninit::zeroed()) }} 
 
+    #[inline(always)]
+    pub fn new() -> Self 
+    { Self::new_const() } 
 
 
     pub fn set_with_limine_framebuffer(&mut self, framebuffer: &&Framebuffer)
     {
-        let colors = self.get_rgb();
+        let colors = self.get_red();
 
         colors.set_row(0, &ColorRow::new(framebuffer.red_mask_shift, framebuffer.red_mask_size));
         colors.set_row(1, &ColorRow::new(framebuffer.green_mask_shift, framebuffer.green_mask_size));
