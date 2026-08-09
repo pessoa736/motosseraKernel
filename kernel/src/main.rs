@@ -11,7 +11,8 @@ use limine::request::{FramebufferRequest, StackSizeRequest};
 use limine::BaseRevision;
 use spin::{Mutex};
 
-use crate::terminal::Terminal;
+use crate::io::InputOutputSistem;
+use crate::shell::Terminal;
 use crate::timer::{TimeInteration};
 use crate::{debuglog::dprint, timer::TIMER, video::{Vga, VirtualColor}};
 
@@ -22,19 +23,16 @@ pub extern crate nalgebra as na;
 mod debuglog;
 mod memory;
 mod pmm;
-//mod lua;
 mod video;
 mod db_font;
 mod io;
 mod math;
-mod terminal;
-//mod matriz;
+mod shell;
+mod utils;
 mod timer;
-//mod shell;
-mod stubs;
-
 
 const SKIPINTRO: bool = true;
+
 
 #[no_mangle]
 #[used]
@@ -56,7 +54,8 @@ static FRAMEBUFFER_REQUEST: FramebufferRequest = FramebufferRequest::new();
 struct Kernel {
     timer: TIMER,
     vga: Vga,
-    terminal: Terminal
+    terminal: Terminal,
+    io: InputOutputSistem,
 }
 
 
@@ -66,7 +65,7 @@ impl Kernel {
         if !BASE_REVISION.is_supported() {panic!("NO_BASE\n")}
         dprint(Some("BOOT"), "B");
 
-        io::init();
+        self.io.init();
         dprint(Some("IK.1"), "io inicializou");
         
         let (heap_phys_base, heap_size) = memory::init();
@@ -179,7 +178,8 @@ static mut KERNEL: Mutex<Kernel> = Mutex::new(
     Kernel {
         timer: TIMER,
         vga: Vga::new(),
-        terminal: Terminal::new()
+        terminal: Terminal::new(),
+        io: InputOutputSistem::new(),
     }
 );
 
