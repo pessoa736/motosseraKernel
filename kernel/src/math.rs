@@ -1,6 +1,5 @@
 
 
-
 #[macro_export]
 macro_rules! lerp_int {
     ($a:expr, $b:expr, $t:expr) => {{
@@ -29,3 +28,13 @@ macro_rules! lerp_float {
 
 
 
+pub fn clamp_usize(min: usize, value: usize, max: usize) -> usize{
+    if min > value {
+        return min;
+    }
+    if max < value {
+        return max;
+    }
+
+    value
+}
