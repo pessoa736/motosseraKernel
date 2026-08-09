@@ -1,20 +1,12 @@
+
+RAM = 128M
+
 PROJECT=motossera-kernel
-
-
-LUAVERSION = 5.5.0
-LUATAR=lua-$(LUAVERSION).tar.gz
-LUAURL=https://www.lua.org/ftp/$(LUATAR)
 
 LIMINE_DIR = limine
 
 all: kernel.iso
 
-lua:
-	if [ ! -d src/lua ]; then \
-		curl -L -R -O $(LUAURL); \
-		mkdir -p src/lua; \
-		tar zxf $(LUATAR) -C src/lua --strip-components=1; \
-	fi
 
 limine:
 	if [ ! -d limine ]; then \
@@ -24,7 +16,7 @@ limine:
 	cd limine && ./configure --enable-bios --enable-bios-cd --enable-uefi-x86-64 --enable-uefi-cd
 	cd limine && make
 
-kernel.bin: lua limine
+kernel.bin: limine
 	cargo build --release
 	
 	cp target/x86_64-unknown-none/release/$(PROJECT) kernel.bin
@@ -61,17 +53,17 @@ run: kernel.iso
 		-cpu host,+topoext \
 		-smp 1 \
 		-enable-kvm \
-		-m 1G \
+		-m $(RAM) \
 		-boot d \
 		-no-reboot \
 		-d int,cpu_reset \
 		-D qemu.log 
 
 clean:
-	rm -rf iso kernel.iso kernel.bin target/ *.o 
+	rm -rf iso kernel.iso kernel.bin *.o 
 	cargo clean 
 
 megaclean: clean
-	rm -rf limine $(LUATAR) lua/ ftp 
+	rm -rf limine ftp target/
 
 comrun: clean run
