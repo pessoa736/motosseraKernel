@@ -16,7 +16,7 @@ pub static HHDM_REQUEST: HhdmRequest = HhdmRequest::new();
 static ALLOCATOR: LockedHeap = LockedHeap::empty();
 
 // Definimos um limite seguro para o heap do Kernel (ex: 32 MB)
-const KERNEL_HEAP_SIZE_LIMIT: usize = 64 * 1024 * 1024; 
+const KERNEL_HEAP_SIZE_LIMIT: usize = 32 * 1024 * 1024; 
 
 pub fn allocator_stats() -> (usize, usize) {
     let h = ALLOCATOR.lock();
