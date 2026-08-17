@@ -32,11 +32,12 @@ pub fn dwrite(s: &str) {
 
 pub fn dprint(title: Option<&str>, s: &str) {
     if let Some(t) = title {
-        dwrite("\n[ ");
+        dwrite("[ ");
         dwrite(t);
-        dwrite(" ] ");
+        dwrite(" ]");
     }
     dwrite(s);
+    dwrite("\n");
 }
 
 
