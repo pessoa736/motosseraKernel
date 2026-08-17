@@ -1,4 +1,4 @@
-use core::{arch::asm, cell::UnsafeCell, mem::MaybeUninit};
+use core::{arch::asm, mem::MaybeUninit};
 use spin::mutex::Mutex;
 use crate::{debuglog::dprint, utils::ToSafe}; // Assuming this is defined in your crate
 
@@ -18,7 +18,7 @@ pub struct InputOutputSistem {
     pub COM1: u16,
     pub KEYBOARD_STATUS: u16,
     pub KEYBOARD_DATA: u16,
-    pub KEYBOARD_MAP_DEFALT: ToSafe<[[u8; 128]; 2]>,
+    pub KEYBOARD_MAP_DEFALT: Option<[[u8; 128]; 2]>,
     pub SHIFT_RIGHT: Scancode,
     pub SHIFT_LEFT: Scancode,
 }
@@ -87,7 +87,7 @@ impl InputOutputSistem {
             COM1: 0x3f8,
             KEYBOARD_STATUS: 0x64,
             KEYBOARD_DATA: 0x60,
-            KEYBOARD_MAP_DEFALT: Mutex::new(MaybeUninit::new(UnsafeCell::new(map_))),
+            KEYBOARD_MAP_DEFALT: Some(map_),
             SHIFT_LEFT: Scancode::new(0x2A, 0x80),
             SHIFT_RIGHT: Scancode::new(0x36, 0x80),
         }
@@ -182,11 +182,12 @@ impl InputOutputSistem {
     }
 
     #[inline(always)]
-    fn is_transmit_empty(&self) -> bool {
+    pub fn is_transmit_empty(&self) -> bool {
         unsafe { (Self::inb(self.COM1 + 5) & 0x20) != 0 }
     }
 
 
+    #[inline(always)]
     pub fn put_char_serial(&self, c: u8) {
         while !self.is_transmit_empty() {}
         unsafe {
@@ -194,9 +195,15 @@ impl InputOutputSistem {
         }
     }
 
+    #[inline(always)]
     pub fn put_string_serial(&self, s: &str) {
         for byte in s.bytes() {
             self.put_char_serial(byte);
         }
+    }
+
+    #[inline(always)]
+    pub fn is_key_available(&self) -> bool {
+        unsafe { (Self::inb(self.KEYBOARD_STATUS) & 0x01) != 0 }
     }
 }
