@@ -1,10 +1,12 @@
 
-use core::{cell::UnsafeCell, default, mem::MaybeUninit, str};
-use alloc::vec::{self, Vec};
-use na::{DMatrix, RowDVector, SMatrix};
+use core::str;
+use alloc::vec::{Vec};
+use alloc::vec;
+use na::DMatrix;
 use rhai::Engine;
-use spin::{Mutex, mutex::Mutex};
-use crate::{debuglog::{dprint, dwrite}, io::InputOutputSistem, utils::{SafeMatrix, ToSafe}, video::{MAX_HEIGHT, MAX_WIDTH, OCEANDARK_COLOR, OFFWHITE_COLOR, Vga, VirtualColor}};
+use crate::debuglog::{dprint, dwrite};
+use crate::io::InputOutputSistem;
+use crate::video::{MAX_HEIGHT, MAX_WIDTH, OFFWHITE_COLOR, Vga};
 
 
 const MAXCOLS: usize = MAX_WIDTH / 8; 
@@ -13,254 +15,225 @@ const MAXROWS: usize = MAX_HEIGHT / 8;
 
 
 
-
-
 ///  eu sei.. ta muito seguro B]
-struct TermUI
+pub struct TermUI
 {
-    font_size: ToSafe<usize>,
-    padding: ToSafe<usize>,
-    size: ToSafe<(usize, usize)>,
-    cursor_pos: ToSafe<(usize, usize)>,
-    view_pos: ToSafe<(usize, usize)>,
-    buffer: SafeMatrix<u8, MAXCOLS, MAXROWS>
+    font_size: usize,
+    padding: usize,
+    size: (usize, usize),
+    cursor_pos: (usize, usize),
+    view_pos: (usize, usize),
+    buffer: Option<DMatrix<u8>>
 }
 
-
-
-
-
-
-
-impl TermUI {
+impl TermUI 
+{
+    #[inline(always)]
+    pub const fn new() -> Self
+    { 
+        Self {
+            font_size: 8,
+            padding: 10,
+            size: (MAXROWS, MAXCOLS),
+            cursor_pos: (0, 0),
+            view_pos: (0, 0),
+            buffer: None
+        } 
+    }
 
 
     #[inline(always)]
-    pub fn new()->Self
-    { Self::const_new() } /// so um wrapper
+    pub fn init(&mut self)
+    {
+        self.buffer = Some(DMatrix::<u8>::zeros(MAXROWS, MAXCOLS));
+        self.clear();
+    }
     
     #[inline(always)]
-    pub const fn const_new() -> Self
-    { Self {
-        font_size: Mutex::new(MaybeUninit::zeroed()),
-        padding: Mutex::new(MaybeUninit::zeroed()),
-        size: Mutex::new(MaybeUninit::zeroed()),
-        cursor_pos: Mutex::new(MaybeUninit::zeroed()),
-        view_pos: Mutex::new(MaybeUninit::zeroed()),
-        buffer: Mutex::new(MaybeUninit::zeroed())
-    } }
+    pub fn clear(&mut self)
+    { for c in self.buffer.as_mut().unwrap() {*c = b' '} }
 
 
+    #[inline(always)]
+    pub fn scrollx(&mut self, dx: usize)
+    { self.view_pos.1 += dx; }
 
-
-    pub fn set_font_size(&mut self, fs: usize)
-    {
-        let mut guard = self.font_size.lock();
-        let pt_fs = unsafe { guard.assume_init_mut() };
-
-        *pt_fs = fs;
-
-        drop(guard);
-    }
-
-    pub fn get_font_size_value(&mut self) -> usize
-    {
-        let guard = self.font_size.lock();
-        let fs = unsafe { guard.assume_init_read() };
-        drop(guard);
-        fs
-    }
-
-
-
-
-    pub fn set_padding(&mut self, pd: usize)
-    {
-        let mut guard = self.padding.lock();
-        let pt_pd = unsafe { guard.assume_init_mut() };
-
-
-        *pt_pd = pd;
-
-        drop(guard);
-    }
-
-    pub fn get_padding_value(&mut self) -> usize
-    {
-        let guard = self.padding.lock();
-        let padding = unsafe { guard.assume_init_read() };
-        drop(guard);
-        padding
-    }
-
-
-
-
-
-    pub fn set_size(&mut self, size: (usize, usize))
-    {
-        let mut guard = self.size.lock();
-        let pt_size= unsafe { guard.assume_init_mut() };
-
-        *pt_size = size;
-
-        drop(guard);
-    }
     
-    pub fn get_size_value(&mut self) -> (usize, usize)
-    {
-        let guard = self.size.lock();
-        let size = unsafe { guard.assume_init_read() };
-        drop(guard);
-        size
-    }
+    #[inline(always)]
+    pub fn scrolly(&mut self, dy: usize)
+    { self.view_pos.0 += dy; }
 
 
-
-
-
-    pub fn set_view_pos(&mut self, pos: (usize, usize))
-    {
-        let mut guard = self.view_pos.lock();
-        let pt_vpos= unsafe { guard.assume_init_mut() };
-
-        *pt_vpos = pos;
-
-        drop(guard);
-    }
-    
-    pub fn get_view_pos_value(&mut self) -> (usize, usize)
-    {
-        let guard = self.view_pos.lock();
-        let vp = unsafe { guard.assume_init_read() };
-        drop(guard);
-        vp
-    }
-
-
-
-
-    pub fn draw(&mut self, _shell: ())
+    #[inline(always)]
+    pub fn writechar(&mut self, c: u8)
     {
         
-        let mut guard = self.buffer.lock();
-        let pt_buff= unsafe { guard.assume_init_mut() };
+    }
 
-        // let (vpx, vpy) = self.get_view_pos_value();
-        // let (h, w) = self.get_size_value();
+    pub fn draw(&mut self, video: &mut Vga)
+    {
+        let Some(buf) = self.buffer.as_mut() else { return; };
 
-        // let _ = (*pt_buff).map_with_location(
-        //     | r, c, v| 
-        //     {
-
-        //     }
-        // );
+        let _ = buf
+            .view_mut(self.view_pos, self.size)
+            .map_with_location(
+                | r, c, v| 
+                { 
+                    let (x, y) = 
+                        (
+                            c*self.font_size + self.padding,
+                            r*self.font_size + self.padding
+                        );
+                    video.draw_char(y - self.view_pos.0, x - self.view_pos.1, v as char, OFFWHITE_COLOR); }
+            );
     }
 }
 
-struct Shell
-{
-    UI: ToSafe<TermUI>,
-    VM: ToSafe<Engine>,
 
-    historic: ToSafe<DMatrix<u8>>,
-    input_line: ToSafe<Vec<u8>>,
-    current_line_pos:  ToSafe<usize>,
-    current_line_lenght:  ToSafe<usize>
+
+
+
+pub struct Shell
+{
+    UI: TermUI,
+    VM: Option<Engine>,
+    io: InputOutputSistem,
+
+    historic: Option<DMatrix<u8>>,
+    input_line: Option<Vec<u8>>,
+    current_line_pos: usize,
+    current_line_lenght: usize,
+
+    status: u8, // 0. inicializando a linha; 1. tempo de requisção; 2. tempo de resposta
+    VMoutput: Vec<u8>
 }
+
 
 impl Shell 
 {
-
     #[inline(always)]
-    pub fn new() -> Self 
-    { Self::const_new() }
-
-    #[inline(always)]
-    pub const fn const_new()->Self
+    pub const fn new()->Self
     {Self {
-        UI: Mutex::new(MaybeUninit::zeroed()),
-        VM: Mutex::new(MaybeUninit::new(Engine::new_raw())),
-        historic: Mutex::new(MaybeUninit::zeroed()),
-        current_line_pos:  Mutex::new(MaybeUninit::zeroed()),
-        current_line_lenght:  Mutex::new(MaybeUninit::zeroed()),
-        input_line: Mutex::new(MaybeUninit::zeroed())
+        UI: TermUI::new(),
+        VM: None,
+        io: InputOutputSistem::new(),
+        historic: None,
+        input_line: None,
+        current_line_pos: 0,
+        current_line_lenght: 0,
+        status: 0,
+        VMoutput: vec![]
+
     }}
 
-
-    pub fn write_char(&mut self, c: u8, is_output: bool) 
+    pub fn init(&mut self)
     {
-        // let mut guardcl = self.current_line_pos.lock();
-        // let pt_cl= unsafe { guardcl.assume_init_mut() }.get_mut();
+        self.UI.init();
+        self.VM = Some(Engine::new());
+        self.io.init();
 
+        self.historic = Some(DMatrix::<u8>::zeros(MAXROWS, MAXCOLS));
+        self.input_line = Some(vec![0u8; MAXCOLS]);
+        self.status = 0;
+    }
 
-        let script: &Vec<u8> = {
-            let mut guardinp = self.input_line.lock();
-            let pt_inpl = unsafe { guardinp.assume_init_mut() };
-            
-            &(pt_inpl).as_slice().to_vec()
-        };
+    #[inline(always)]
+    fn clear_input_line(&mut self)
+    {
+        for l in self.input_line.as_mut().unwrap()
+        { *l = b' ' }
+        self.current_line_lenght = 0
+    }
 
+    fn write_char(&mut self, c: u8) 
+    {
         match c {
-            b'\n' => {
-                self.execute(&script);
 
-                let mut guardhis = self.historic.lock();
-                let pt_his= unsafe { guardhis.assume_init_mut() };
-
-                
-            }
-            b'\t' => {
-                let mut guardinp = self.input_line.lock();
-                let pt_inpl = unsafe { guardinp.assume_init_mut() };
-
-                let mut guardlen = self.current_line_lenght.lock();
-                let pt_len = unsafe { guardlen.assume_init_mut() };
-
-                for _ in 0..1 
-                {
-                    (*pt_inpl)[*pt_len] = b' ';
+            b'\n' => 
+            {
+                if let Some(line) = self.input_line.as_ref() {
+                    self.execute(&line.to_vec());
                 }
-
-                drop(guardinp);
-                drop(guardlen);
+                self.clear_input_line();
             }
-            _ => {
-                let mut guardinp = self.input_line.lock();
-                let pt_inpl = unsafe { guardinp.assume_init_mut() };
 
-                let mut guardlen = self.current_line_lenght.lock();
-                let pt_len = unsafe { guardlen.assume_init_mut() };
+            b'\t' => 
+            { self.write_str(b"  ".to_vec()); }
+            
+            0x08 =>
+            {
+                self.current_line_lenght -= if self.current_line_lenght == 0 {0} else {1};
+                
+                if let Some(line) = self.input_line.as_mut() 
+                {
+                    line[self.current_line_lenght] = b' '
+                }
+            }
 
-                (*pt_inpl)[*pt_len] = c;
-                (*pt_len) += 1;
-
-                drop(guardinp);
-                drop(guardlen);
+            _ => 
+            {
+                if let Some(line) = self.input_line.as_mut() {
+                    line[self.current_line_lenght] = c;
+                    self.current_line_lenght += 1;
+                }
             }
             
         }
 
     }
 
-    pub fn write_str(&mut self, s: Vec<u8>, is_output: bool)
+
+    #[inline(always)]
+    fn write_str(&mut self, s: Vec<u8>)
     {
         for b in s
-        { self.write_char(b, is_output); }       
+        { self.write_char(b);}       
     }
+
 
     pub fn execute(&mut self, script: &Vec<u8>) 
     {
-        let mut guard_vm = self.VM.lock();
-        let pt_vm= unsafe { guard_vm.assume_init_mut() };
-
-        // let mut guard_his = self.historic.lock();
-        // let pt_his= unsafe { guard_his.assume_init_mut() };
-        
+        let Some(vm) = self.VM.as_mut() else { return; };
         let scr = str::from_utf8(script).unwrap();
-        let output = (*pt_vm).eval::<Vec<u8>>(scr).unwrap();
+        let output = vm.eval::<Vec<u8>>(scr);
 
-        self.write_str(output, true);
+        if let Ok(out) = output
+        { self.VMoutput = out }
+    }
+
+
+    pub fn render(&mut self, video: &mut Vga)
+    {  
+        self.UI.draw(video);
+
+        
+        match self.status {
+            0 => 
+            {
+                self.write_str(b"[motosserakernel] ".to_vec());
+                self.status = 1;
+            }
+            1 => 
+            {
+                if self.io.is_key_available() 
+                {
+                    let ch = self.io.get_keyboard_input();
+                    self.write_char(ch);
+                }
+            }
+            2 => 
+            {
+                self.UI.(self.VMoutput.to_vec());
+                self.write_char(b'\n');
+                self.status = 0
+            }
+            _ => todo!()
+        };
+
+        
+
+        dwrite( unsafe {str::from_utf8_unchecked(self.input_line.as_mut().unwrap().as_slice())} );
+        dwrite("\n");
     }
 
 }

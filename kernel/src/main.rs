@@ -5,6 +5,7 @@
 #![allow(incomplete_features)]
 // #![feature(abi_x86_interrupt)]
 
+use core::mem::MaybeUninit;
 use core::time::Duration;
 
 use limine::request::{FramebufferRequest, StackSizeRequest};
@@ -12,7 +13,7 @@ use limine::BaseRevision;
 use spin::{Mutex};
 
 use crate::io::InputOutputSistem;
-use crate::shell::Terminal;
+use crate::shell::Shell;
 use crate::timer::{TimeInteration};
 use crate::{debuglog::dprint, timer::TIMER, video::{Vga, VirtualColor}};
 
@@ -54,7 +55,7 @@ static FRAMEBUFFER_REQUEST: FramebufferRequest = FramebufferRequest::new();
 struct Kernel {
     timer: TIMER,
     vga: Vga,
-    terminal: Terminal,
+    terminal: Shell,
     io: InputOutputSistem,
 }
 
@@ -79,7 +80,7 @@ impl Kernel {
         self.vga.init(&FRAMEBUFFER_REQUEST);
         dprint(Some("IK.3"), "video inicializou");
 
-        self.terminal.init(&self.vga);
+        self.terminal.init();
         dprint(Some("IK.4"), "terninal inicializou");
         // dprint(Some("BOOT"), "C");
     
@@ -100,6 +101,7 @@ impl Kernel {
 
         //     }
         // );
+        dprint(Some("loop"), "entrou no shell");
         loop {
             self.terminal.render(&mut self.vga);
             self.vga.swap_buffers();
@@ -174,14 +176,7 @@ unsafe impl Sync for Kernel {}
 /// entrar no shell, para garantir que algo renderiza (sem depender de
 /// loop de intro que nunca disparava o swap_buffers).
 
-static mut KERNEL: Mutex<Kernel> = Mutex::new(
-    Kernel {
-        timer: TIMER,
-        vga: Vga::new(),
-        terminal: Terminal::new(),
-        io: InputOutputSistem::new(),
-    }
-);
+static mut KERNEL: Mutex<MaybeUninit<Kernel>> = Mutex::new(MaybeUninit::zeroed());
 
 
 #[no_mangle]
@@ -193,6 +188,15 @@ pub extern "C" fn _start() -> ()
     
     unsafe {
         let kernel = KERNEL.get_mut();
+        
+        kernel.write(Kernel {
+            timer: TIMER,
+            vga: Vga::new(),
+            terminal: Shell::new(),
+            io: InputOutputSistem::new(),
+        });
+
+        let kernel = kernel.assume_init_mut();
         kernel.init();
         if !SKIPINTRO {kernel.paint_welcome();};
         kernel.Loop();
