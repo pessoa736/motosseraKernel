@@ -1,6 +1,5 @@
 
 use alloc::vec::Vec;
-use limine::memmap::MEMMAP_USABLE;
 use limine::request::MemmapResponse;
 use spin::Mutex;
 
@@ -9,35 +8,49 @@ use crate::debuglog::{dprint, dwrite};
 
 pub const FRAME_SIZE: usize = 4096;
 
-fn frame_floor(addr: usize) -> usize {
-    addr / FRAME_SIZE
-}
 
-fn frame_ceil(addr: usize) -> usize {
-    (addr + FRAME_SIZE - 1) / FRAME_SIZE
-}
 
-struct BitmapFrameAllocator {
+
+#[inline(always)]
+fn frame_floor(addr: usize) -> usize 
+{ addr / FRAME_SIZE }
+
+#[inline(always)]
+fn frame_ceil(addr: usize) -> usize 
+{ (addr + FRAME_SIZE - 1) / FRAME_SIZE }
+
+
+
+
+
+struct BitmapFrameAllocator 
+{
     bitmap: Vec<u8>,
     total_frames: usize,
 }
 
-impl BitmapFrameAllocator {
-    fn set_used(&mut self, frame: usize) {
-        self.bitmap[frame / 8] |= 1 << (frame % 8);
-    }
 
-    fn set_free(&mut self, frame: usize) {
-        self.bitmap[frame / 8] &= !(1 << (frame % 8));
-    }
+impl BitmapFrameAllocator 
+{
 
-    fn is_free(&self, frame: usize) -> bool {
-        (self.bitmap[frame / 8] & (1 << (frame % 8))) == 0
-    }
+    #[inline(always)]
+    fn set_used(&mut self, frame: usize) 
+    { self.bitmap[frame / 8] |= 1 << (frame % 8); }
 
-    fn allocate_frame(&mut self) -> Option<usize> {
-        for frame in 0..self.total_frames {
-            if self.is_free(frame) {
+    #[inline(always)]
+    fn set_free(&mut self, frame: usize) 
+    { self.bitmap[frame / 8] &= !(1 << (frame % 8)); }
+
+    #[inline(always)]
+    fn is_free(&self, frame: usize) -> bool 
+    { (self.bitmap[frame / 8] & (1 << (frame % 8))) == 0 }
+
+    fn allocate_frame(&mut self) -> Option<usize> 
+    {
+        for frame in 0..self.total_frames 
+        {
+            if self.is_free(frame)
+            {
                 self.set_used(frame);
                 return Some(frame * FRAME_SIZE);
             }
@@ -45,6 +58,7 @@ impl BitmapFrameAllocator {
         None
     }
 
+    #[inline(always)]
     fn free_frame(&mut self, phys_addr: usize) {
         self.set_free(phys_addr / FRAME_SIZE);
     }
@@ -89,7 +103,8 @@ pub fn init_with_response(response: &MemmapResponse, heap_phys_base: usize, heap
 
     let mut highest_addr: u64 = 0;
     for entry in response.entries() {
-        if entry.type_ == limine::memmap::MEMMAP_USABLE
+        if 
+            entry.type_ == limine::memmap::MEMMAP_USABLE
             || entry.type_ == limine::memmap::MEMMAP_BOOTLOADER_RECLAIMABLE
             || entry.type_ == limine::memmap::MEMMAP_EXECUTABLE_AND_MODULES
         {
