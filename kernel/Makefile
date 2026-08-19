@@ -1,25 +1,31 @@
 
 RAM = 128M
-
+THREADS = 2
 PROJECT=motossera-kernel
 
+ARCHI ?= x86_64
+
 LIMINE_DIR = limine
+
+
+.PHONY: all limine clean megaclean comrun
+
 
 all: kernel.iso
 
 
 limine:
-	if [ ! -d limine ]; then \
+	@if [ ! -d $(LIMINE_DIR) ]; then \
 		git clone https://github.com/limine-bootloader/limine.git; \
 	fi
-	cd limine && ./bootstrap
-	cd limine && ./configure --enable-bios --enable-bios-cd --enable-uefi-x86-64 --enable-uefi-cd
-	cd limine && make
+	cd $(LIMINE_DIR) && ./bootstrap
+	cd $(LIMINE_DIR) && ./configure  --enable-bios --enable-bios-cd --enable-uefi-$(ARCHI) --enable-uefi-cd
+	cd $(LIMINE_DIR) && $(MAKE)  
 
 kernel.bin: limine
-	cargo build --release
+	cargo build --release --target $(ARCHI)-unknown-none
 	
-	cp target/x86_64-unknown-none/release/$(PROJECT) kernel.bin
+	cp target/$(ARCHI)-unknown-none/release/$(PROJECT) kernel.bin
 
 iso: kernel.bin
 	mkdir -p iso/boot
@@ -45,13 +51,13 @@ kernel.iso: iso
 		iso -o kernel.iso
 	./limine/bin/limine bios-install kernel.iso
 
-run: kernel.iso
+run: kernel.iso limine
 	qemu-system-x86_64 \
 		-cdrom kernel.iso \
 		-machine q35 \
 		-serial stdio \
 		-cpu host,+topoext \
-		-smp 1 \
+		-smp $(THREADS) \
 		-enable-kvm \
 		-m $(RAM) \
 		-boot d \
@@ -64,6 +70,6 @@ clean:
 	cargo clean 
 
 megaclean: clean
-	rm -rf limine ftp target/
+	rm -rf $(LIMINE_DIR) ftp target/
 
 comrun: clean run

@@ -1,6 +1,10 @@
-[build]
-target = "x86_64-unknown-none"
-target-applies-to-host = false
+
+[target.aarch64-unknown-none]
+rustflags = [
+    "-C", "link-arg=-Tlinker.ld",
+    "-C", "link-arg=-zmax-page-size=0x1000",
+    "-C", "relocation-model=static"
+]
 
 [target.x86_64-unknown-none]
 rustflags = [
@@ -9,6 +13,8 @@ rustflags = [
     "-C", "code-model=kernel",
     "-C", "relocation-model=static"
 ]
+
+
 
 [profile.release.build-override]
 codegen-units = 1

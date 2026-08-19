@@ -40,11 +40,20 @@ pub fn dprint(title: Option<&str>, s: &str) {
     dwrite("\n");
 }
 
-
+#[cfg(target_arch = "x86_6-unknown-none")]
 #[panic_handler]
-pub fn panic(_info: &PanicInfo) -> ! {
+pub fn panic_x86_64(_info: &PanicInfo) -> ! {
     let mut writer = SerialWriter;
     let _ = write!(writer, "\n[ panic ] ");
     let _ = write!(writer, "{}", _info);
     loop {}
+}
+
+macro_rules! panic {
+    () => {
+        #[cfg(target_arch = "x86_6-unknown-none")]
+        {
+            panic_x86_64
+        }
+    };
 }
