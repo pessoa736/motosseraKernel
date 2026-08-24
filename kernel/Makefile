@@ -3,9 +3,19 @@ RAM = 128M
 THREADS = 2
 PROJECT=motossera-kernel
 
-ARCHI ?= x86_64
-
 LIMINE_DIR = limine
+ISO_DIR = iso
+TARGET_DIR = target
+
+
+ARCHI ?= x86_64
+ifeq ($(ARCHI), aarch64)
+	ARCHI_ext ?= $(ARCHI)-linux-android
+else 
+	ARCHI_ext ?= $(ARCHI)-unknown-none
+endif
+
+
 
 
 .PHONY: all limine clean megaclean comrun
@@ -22,21 +32,24 @@ limine:
 	cd $(LIMINE_DIR) && ./configure  --enable-bios --enable-bios-cd --enable-uefi-$(ARCHI) --enable-uefi-cd
 	cd $(LIMINE_DIR) && $(MAKE)  
 
+
 kernel.bin: limine
-	cargo build --release --target $(ARCHI)-unknown-none
+	cargo build --release --target $(ARCHI_ext)
 	
-	cp target/$(ARCHI)-unknown-none/release/$(PROJECT) kernel.bin
+	cp $(TARGET_DIR)/$(ARCHI_ext)/release/$(PROJECT) kernel.bin
+
 
 iso: kernel.bin
-	mkdir -p iso/boot
-	mkdir -p iso/EFI/BOOT
+	mkdir -p $(ISO_DIR)/boot
+	mkdir -p $(ISO_DIR)/EFI/BOOT
 
-	cp kernel.bin iso/
-	cp limine.conf iso/
-	cp limine/bin/limine-bios.sys iso/
-	cp limine/bin/limine-bios-cd.bin iso/
-	cp limine/bin/limine-uefi-cd.bin iso/
-	cp limine/bin/BOOTX64.EFI iso/EFI/BOOT/
+	cp kernel.bin  $(ISO_DIR)/
+	cp limine.conf $(ISO_DIR)/
+
+	cp $(LIMINE_DIR)/bin/limine-bios.sys    $(ISO_DIR)/
+	cp $(LIMINE_DIR)/bin/limine-bios-cd.bin $(ISO_DIR)/
+	cp $(LIMINE_DIR)/bin/limine-uefi-cd.bin $(ISO_DIR)/
+	cp $(LIMINE_DIR)/bin/BOOTX64.EFI        $(ISO_DIR)/EFI/BOOT/
 
 kernel.iso: iso
 	xorriso -as mkisofs \
@@ -49,27 +62,29 @@ kernel.iso: iso
 		--efi-boot-image \
 		--protective-msdos-label \
 		iso -o kernel.iso
-	./limine/bin/limine bios-install kernel.iso
+
+	$(LIMINE_DIR)/bin/limine bios-install kernel.iso
 
 run: kernel.iso limine
-	qemu-system-x86_64 \
+	qemu-system-$(ARCHI) \
 		-cdrom kernel.iso \
 		-machine q35 \
 		-serial stdio \
 		-cpu host,+topoext \
 		-smp $(THREADS) \
-		-enable-kvm \
+		$(if $(filter x86_64,$(ARCHI)), -enable-kvm) \
 		-m $(RAM) \
 		-boot d \
 		-no-reboot \
 		-d int,cpu_reset \
-		-D qemu.log 
+		-D qemu.log  
+
 
 clean:
 	rm -rf iso kernel.iso kernel.bin *.o 
 	cargo clean 
 
 megaclean: clean
-	rm -rf $(LIMINE_DIR) ftp target/
+	rm -rf $(LIMINE_DIR)/ ftp $(TARGET_DIR)/
 
 comrun: clean run
