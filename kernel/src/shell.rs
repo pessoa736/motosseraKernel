@@ -1,5 +1,6 @@
 
 use core::str;
+use alloc::string::{String, ToString};
 use alloc::vec::{Vec};
 use alloc::vec;
 use na::DMatrix;
@@ -92,20 +93,19 @@ impl TermUI
 
 
 
-
 pub struct Shell
 {
     UI: TermUI,
     VM: Option<Engine>,
     io: InputOutputSistem,
 
-    historic: Option<DMatrix<u8>>,
-    input_line: Option<Vec<u8>>,
+    historic: Option<Vec<String>>,
+    buffer: Option<Vec<String>>,
+    input_line: Option<String>,
     current_line_pos: usize,
     current_line_lenght: usize,
 
     status: u8, // 0. inicializando a linha; 1. tempo de requisção; 2. tempo de resposta
-    VMoutput: Vec<u8>
 }
 
 
@@ -118,11 +118,11 @@ impl Shell
         VM: None,
         io: InputOutputSistem::new(),
         historic: None,
+        buffer: None,
         input_line: None,
         current_line_pos: 0,
         current_line_lenght: 0,
-        status: 0,
-        VMoutput: vec![]
+        status: 0
 
     }}
 
@@ -132,48 +132,63 @@ impl Shell
         self.VM = Some(Engine::new());
         self.io.init();
 
-        self.historic = Some(DMatrix::<u8>::zeros(MAXROWS, MAXCOLS));
-        self.input_line = Some(vec![0u8; MAXCOLS]);
+        self.historic = Some(vec![]);
+        self.buffer = Some(vec![]);
+        self.input_line = Some(String::new());
         self.status = 0;
     }
 
     #[inline(always)]
     fn clear_input_line(&mut self)
     {
-        for l in self.input_line.as_mut().unwrap()
-        { *l = b' ' }
+        unsafe {
+            for l in self.input_line.as_mut().unwrap().as_bytes_mut()
+            { *l = b' ' }
+        }
         self.current_line_lenght = 0
     }
 
-    fn write_char(&mut self, c: u8) 
+    fn save_in_historic_command(&mut self, s: &String)
     {
-        match c {
+        if let Some(hist) = self.historic.as_mut() 
+        { (*hist).insert(self.current_line_pos, s.clone()); }
+    }
+
+    fn write_char(&mut self, c: char) 
+    {
+        match c as u8 {
 
             b'\n' => 
             {
-                if let Some(line) = self.input_line.as_ref() {
-                    self.execute(&line.to_vec());
+                if let Some(line) = self.input_line.as_ref()
+                {
+                    let input = line.clone();
+                    let result = self.execute(&input);
+
+                    self.save_in_historic_command(&input);
+
+                    if let Some(buff) = self.buffer.as_mut() 
+                    {
+                        (*buff).insert(self.current_line_pos, result);
+                    }
                 }
                 self.clear_input_line();
             }
 
             b'\t' => 
-            { self.write_str(b"  ".to_vec()); }
+            { self.write_str("  "); }
             
             0x08 =>
             {
                 self.current_line_lenght -= if self.current_line_lenght == 0 {0} else {1};
                 
-                if let Some(line) = self.input_line.as_mut() 
-                {
-                    line[self.current_line_lenght] = b' '
-                }
+                if let Some(line) = self.input_line.as_mut() {line.pop();}
             }
 
             _ => 
             {
                 if let Some(line) = self.input_line.as_mut() {
-                    line[self.current_line_lenght] = c;
+                    line.insert(self.current_line_lenght, c as char);
                     self.current_line_lenght += 1;
                 }
             }
@@ -184,21 +199,22 @@ impl Shell
 
 
     #[inline(always)]
-    fn write_str(&mut self, s: Vec<u8>)
+    fn write_str(&mut self, s: &str)
     {
-        for b in s
-        { self.write_char(b);}       
+        for b in s.bytes()
+        { self.write_char(b as char);}       
     }
 
 
-    pub fn execute(&mut self, script: &Vec<u8>) 
+    pub fn execute(&mut self, script: &String) -> String
     {
-        let Some(vm) = self.VM.as_mut() else { return; };
-        let scr = str::from_utf8(script).unwrap();
-        let output = vm.eval::<Vec<u8>>(scr);
+        let Some(vm) = self.VM.as_mut() else { return "VM não inicializada".to_string(); };
+        let output = vm.eval::<String>(&script.clone());
 
         if let Ok(out) = output
-        { self.VMoutput = out }
+        { out }
+        else 
+        { "erro".to_string() }
     }
 
 
@@ -210,30 +226,26 @@ impl Shell
         match self.status {
             0 => 
             {
-                self.write_str(b"[motosserakernel] ".to_vec());
+                self.write_str(&"[motosserakernel] ".to_string());
                 self.status = 1;
             }
             1 => 
             {
-                if self.io.is_key_available() 
-                {
-                    let ch = self.io.get_keyboard_input();
-                    self.write_char(ch);
-                }
+                
+                let ch = self.io.read_char();
+                self.write_char(ch);
+                
             }
             2 => 
             {
-                self.UI.(self.VMoutput.to_vec());
-                self.write_char(b'\n');
+                //self.UI.(self.VMoutput.to_vec());
+                self.write_char('\n');
                 self.status = 0
             }
             _ => todo!()
         };
 
         
-
-        dwrite( unsafe {str::from_utf8_unchecked(self.input_line.as_mut().unwrap().as_slice())} );
-        dwrite("\n");
     }
 
 }
