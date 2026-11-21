@@ -169,3 +169,19 @@ entrada.
 
 O roadmap é temporário e deve ser revisto após cada etapa. Nada é considerado
 concluído apenas porque compila: boot exige log, comportamento exige teste.
+
+## Licença
+
+O código e a documentação original do motosseraKernel são distribuídos sob a
+[licença MIT](LICENSE). Qualquer pessoa pode usar, estudar, modificar,
+redistribuir e vender suas próprias versões, inclusive em produtos fechados,
+desde que mantenha o aviso de copyright de Davi Passos e o texto da licença.
+
+O objetivo do repositório é apoiar o aprendizado do autor e servir como base
+aberta para outras pessoas. A licença não garante que o kernel esteja pronto
+para produção; o software é fornecido sem garantias.
+
+Dependências, Limine, fontes TTF e demais materiais de terceiros continuam sob
+suas próprias licenças. A licença do projeto não os relicencia nem substitui
+os créditos originais. A origem e os termos das fontes incluídas ainda devem
+ser documentados de forma completa antes de uma distribuição pública formal.

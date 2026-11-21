@@ -212,6 +212,9 @@ e só depois expandir.
   no navegador e requisitos de headers para o deploy.
 - [ ] Mapa de entrada por plataforma: teclado físico/virtual, mouse, tablet e
   touch; limitações reais de VNC e WebAssembly.
+- [ ] Documentar origem, autoria e termos das fontes TTF incluídas. A licença
+  MIT do código original (`LICENSE`) não se aplica automaticamente a elas;
+  dependências e recursos de terceiros mantêm seus próprios termos.
 
 ## 7. Funcionalidade ausente (escolhas de escopo, não defeitos)
 

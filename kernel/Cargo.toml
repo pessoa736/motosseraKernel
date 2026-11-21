@@ -3,6 +3,7 @@ name = "motossera-kernel"
 version = "0.1.0"
 edition = "2021"
 resolver = "2"
+license = "MIT"
 
 [dependencies]
 limine = "0.6.3"
