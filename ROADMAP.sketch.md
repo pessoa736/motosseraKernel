@@ -172,6 +172,12 @@ e só depois expandir.
   AArch64, mas nenhuma imagem do motosseraKernel foi executada nele. Suporte a
   máquina `virt`, Limine, EDK2, framebuffer e entrada deve ser provado no
   spike da Etapa 5. COOP/COEP e hospedagem estática também estão por validar.
+- Touch/multitouch no VNC: depende de o cliente e o transporte preservarem
+  esse tipo de evento. O QEMU ter dispositivo multitouch não prova suporte do
+  cliente Android; testar antes de prometer paridade com o browser.
+- Touch/multitouch no `qemu-wasm`: ainda não verificado. O browser fornece
+  `pointerType` e `pointerId`, mas falta provar a tradução até o dispositivo
+  virtual e o driver do kernel.
 
 ## 5. Lacunas de engenharia
 
@@ -192,8 +198,10 @@ e só depois expandir.
 
 ## 6. Lacunas de documentação
 
-- [ ] README com requisitos (nightly, rust-src, QEMU, xorriso, Limine),
-  comandos exatos por arquitetura e como bootar.
+- [x] README inicial com requisitos, estado real, arquitetura e comandos de
+  build verificados (`README.md`).
+- [ ] Expandir o README após a Etapa 1 com os comandos exatos e validados de
+  boot por arquitetura.
 - [ ] Explicação curta da arquitetura: ordem de init, mapa de memória,
   convenção de cores, papel da serial vs. terminal gráfico.
 - [ ] `docs/description.md` existe, mas descreve intenção, não o estado real;
@@ -202,11 +210,14 @@ e só depois expandir.
   gráfico, e o papel do Rhai (linguagem de comandos do kernel?).
 - [ ] Guias de execução: QEMU no PC, VNC local no Termux, build/execução WASM
   no navegador e requisitos de headers para o deploy.
+- [ ] Mapa de entrada por plataforma: teclado físico/virtual, mouse, tablet e
+  touch; limitações reais de VNC e WebAssembly.
 
 ## 7. Funcionalidade ausente (escolhas de escopo, não defeitos)
 
 - Entrada por teclado PS/2 (structs de scancode existem, sem consumo),
-  interrupções, timer real, scheduler, userspace, storage/VFS, rede, SMP.
+  mouse/tablet/touch, teclado virtual, interrupções, timer real, scheduler,
+  userspace, storage/VFS, rede, SMP.
 - Nenhum desses entra no MVP. O produto mínimo é: boot reproduzível + logs +
   shell serial com alguns comandos + avaliação Rhai com resultado impresso.
   Terminal gráfico é a etapa seguinte, não pré-requisito do shell.
@@ -228,6 +239,9 @@ e só depois expandir.
   headless com VNC no Termux e WebAssembly no navegador para x86_64 E
   AArch64. O navegador executa a mesma imagem bootável emulada, não uma
   reescrita do kernel para `wasm32-unknown-unknown`.
+- [x] Entrada futura: touch e mouse devem permanecer dispositivos/eventos
+  distintos, inclusive diante de um click. O sistema terá teclado virtual,
+  mas isso não entra no MVP nem substitui o suporte a teclado físico.
 
 Saída: registrar essas decisões no README quando ele for criado.
 
@@ -311,7 +325,7 @@ não atende ao requisito de rodar o mesmo sistema bare-metal.
   avaliar `portlandhodl/v86_64`; v86 upstream fica descartado porque não
   suporta kernels de 64 bits. Não misturar emuladores sem necessidade.
 - [ ] Frontend web único, em diretório separado do kernel, com xterm.js para
-  a serial no MVP e canvas para o framebuffer na Etapa 6; teclado vai para o
+  a serial no MVP e canvas para o framebuffer na Etapa 7; teclado vai para o
   dispositivo de entrada correto quando esse driver existir.
 - [ ] Configuração declarativa por arquitetura compartilhada pelo build web e
   pelos comandos QEMU: imagem, memória, firmware, máquina e dispositivos.
@@ -332,7 +346,56 @@ Saída: uma página local que inicializa x86_64 e AArch64 por seleção explíci
 mostra o shell serial da Etapa 3 e permite enviar comandos, sem backend de
 aplicação. Deploy público é opcional até essa prova passar.
 
-### Etapa 6 — base para crescer
+### Etapa 6 — entrada física, touch distinto de mouse e teclado virtual
+
+Esta etapa começa somente depois de o console funcionar e de existir um timer
+confiável. Ela não altera o console serial do MVP nem usa touch para fingir
+que existe um mouse.
+
+- [ ] Criar um modelo de eventos com origem explícita (`keyboard`, `mouse`,
+  `tablet`, `touch`), fase (`press`, `move`, `release`, `cancel`), posição e
+  identificador do contato. Click de mouse e toque nunca compartilham o mesmo
+  evento genérico; qualquer atalho por conveniência é uma política da UI, não
+  uma perda de informação no driver.
+- [ ] Definir o caminho virtio-input: descoberta/configuração PCI, virtqueues,
+  IRQ, eventos EV_KEY/EV_REL/EV_ABS e `EV_SYN`, validado primeiro com logs.
+  O QEMU instalado expõe `virtio-keyboard-pci`, `virtio-mouse-pci`,
+  `virtio-tablet-pci` e `virtio-multitouch-pci`.
+- [ ] Suportar teclado físico antes do virtual: layout inicial documentado,
+  teclas mantidas/repetição, modificadores e mapeamento para o editor do
+  shell. PS/2 só entra como compatibilidade adicional se for necessário.
+- [ ] Implementar mouse e tablet separadamente: movimento relativo/absoluto,
+  botões e scroll; não converter `usb-tablet` ou `virtio-tablet` em touch.
+- [ ] Implementar touch com tracking ID/slot, início, movimento, fim e
+  cancelamento; primeiro um contato, depois múltiplos. Gestos (tap, long
+  press, swipe, pinch) ficam numa camada própria e usam o timer real.
+- [ ] Criar um painel de diagnóstico que mostre origem, ID, coordenadas e fase
+  dos eventos; testar mouse e touch alternados e simultâneos para provar que
+  a origem não se perde.
+- [ ] Teclado virtual renderizado no framebuffer, visível sob demanda, com
+  foco de texto, modificadores, backspace/enter e layout adaptado a toque.
+  As teclas pressionadas entram no mesmo pipeline lógico do teclado físico,
+  mas continuam identificadas como virtuais para a UI/diagnóstico.
+- [ ] Touch no teclado virtual usa captura do contato até `release`/`cancel`,
+  evitando ativação dupla por eventos de compatibilidade e impedindo que o
+  mesmo toque acione também o conteúdo atrás do teclado.
+- [ ] No browser, mapear Pointer Events sem descartar `pointerType`,
+  `pointerId` e `isPrimary`; impedir os mouse events de compatibilidade após
+  touch e traduzir para o dispositivo virtual apropriado. A distinção existe
+  no browser, mas precisa ser testada também dentro do emulador.
+- [ ] Verificar VNC: mouse/tablet funciona como caminho básico; touch real e
+  múltiplos contatos dependem de cliente/protocolo. Se o cliente escolhido só
+  enviar pointer de mouse, documentar essa limitação em vez de declarar touch
+  suportado. Não exigir passthrough de `/dev/input` do Android.
+- [ ] Testes unitários para normalização de coordenadas, ciclo de contato,
+  gestos e layout; testes QEMU via QMP `input-send-event` com multitouch;
+  testes manuais no PC, cliente VNC Android e browser Android.
+
+Saída: uma demo gráfica em que mouse move/clica, touch arrasta/toca com outra
+semântica visível, dois dedos têm slots independentes, e o teclado virtual
+escreve no shell sem gerar eventos duplicados.
+
+### Etapa 7 — base para crescer
 
 - [ ] CI com build das duas arquiteturas, testes em host e smoke de boot.
 - [ ] `cargo clippy`/`fmt` no CI e redução dos warnings para perto de zero.
@@ -369,3 +432,16 @@ O MVP está pronto quando TODOS forem verdade, sem ressalva:
   no emulador WASM e o shell serial aceita `1 + 2`, retornando `3`. O teste é
   repetido no PC e no Android; restrições de navegador ficam documentadas.
 - [ ] Nenhuma afirmação de "funciona" sem log ou teste anexado.
+
+## 10. Depois do MVP: entrada touch e teclado virtual
+
+Estes critérios pertencem à Etapa 6, não bloqueiam o shell serial:
+
+- [ ] Um click de mouse chega com origem `mouse`, botão e coordenadas; um
+  toque chega com origem `touch`, tracking ID/slot e fase própria.
+- [ ] Mouse e touch podem ocorrer alternadamente sem trocar a origem nem
+  produzir click/toque duplicado por eventos de compatibilidade.
+- [ ] O teclado virtual abre/fecha, respeita foco e escreve no mesmo editor do
+  shell usado pelo teclado físico, inclusive no browser Android.
+- [ ] VNC documenta a capacidade efetiva do cliente testado; touch real não é
+  reivindicado quando o transporte entrega apenas pointer de mouse.
