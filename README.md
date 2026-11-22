@@ -22,10 +22,12 @@ Já existe código para:
 - esqueleto de terminal/shell com Rhai;
 - gerador de fontes TTF em `tools/fontGenerator`.
 
-Também existem problemas importantes: o caminho ARM do Makefile está errado,
-o shell ainda não fecha o ciclo de entrada/saída e não há testes automatizados.
-A análise completa, incluindo o que foi realmente executado, está em
-[ROADMAP.sketch.md](ROADMAP.sketch.md).
+Os dois builds release e as duas ISOs já são gerados, mas o ELF ARM ainda não
+usa o linker script correto e não emite log próprio no QEMU. No x86_64, o boot
+alcança serial, PMM, framebuffer e a tela de boas-vindas; o prompt do shell
+ainda não foi validado. Os testes em host também continuam bloqueados e não há
+uma suíte automatizada. A análise completa, incluindo comandos e limitações,
+está em [ROADMAP.sketch.md](ROADMAP.sketch.md).
 
 ## Arquiteturas e ambientes pretendidos
 
@@ -65,20 +67,23 @@ por suposição.
 ## Organização
 
 ```text
+Cargo.toml           manifesto e dependências do kernel
+rust-toolchain.toml  toolchain nightly, rust-src e targets
+.cargo/config.toml   build-std e flags de link por arquitetura
+Makefile             build, ISO e execução QEMU (em correção no roadmap)
+linker.ld            layout x86_64
+linker_aarch64.ld    layout ARM (ainda não aplicado ao alvo softfloat)
+limine.conf          configuração de boot
+
+source/              código Rust do kernel
+  definitions/       constantes compartilhadas de I/O, vídeo e shell
+
 kernel/
-  src/               código Rust do kernel
-  .cargo/            targets e flags de link
-  Makefile           build, ISO e execução QEMU (em correção no roadmap)
-  linker.ld          layout x86_64
-  linker_aarch64.ld  layout ARM (atualmente não usado pelo .cargo/config)
-  limine.conf        configuração de boot
   limine/            checkout local do Limine, ignorado pelo Git
+  web/               esqueleto inicial da página para emulação
 
 tools/
   fontGenerator/     gerador das fontes bitmap
-
-docs/
-  description.md     descrição inicial do projeto
 
 ROADMAP.sketch.md    análise técnica e etapas temporárias
 DUVIDAS.md           decisões de produto pendentes com o autor
@@ -109,25 +114,21 @@ que os targets bare-metal estejam prontos.
 
 ## Build de verificação
 
-Estes são comandos usados na análise, não uma promessa de que `make` já está
-pronto para uso diário.
-
-Dentro de `kernel/`:
+Comandos executados na raiz, em 2026-11-21:
 
 ```sh
-CARGO_PROFILE_RELEASE_PANIC=abort cargo build --release \
-  --target x86_64-unknown-none -Zbuild-std=core,alloc
-
-CARGO_PROFILE_RELEASE_PANIC=abort cargo build --release \
-  --target aarch64-unknown-none -Zbuild-std=core,alloc
+cargo build --release --target x86_64-unknown-none
+cargo build --release --target aarch64-unknown-none-softfloat
 ```
 
-Os dois comandos compilaram no ambiente da análise, com warnings. O target
-`aarch64-linux-android` usado atualmente pelo Makefile é inadequado para este
-kernel bare-metal e falha na linkagem.
+Os dois comandos passaram, cada um com 39 warnings. O Makefile também gerou as
+duas ISOs. O x86_64 usa o linker higher-half esperado; o ARM ainda precisa de
+uma seção `[target.aarch64-unknown-none-softfloat]` em `.cargo/config.toml`
+para aplicar `linker_aarch64.ld`.
 
-Gerar uma ISO e compilar não prova que o kernel executa. A validação de boot,
-incluindo os problemas encontrados no Limine/QEMU, está descrita no roadmap.
+Compilar e gerar ISO não prova boot. O x86_64 chegou à tela de boas-vindas no
+QEMU; o ARM mostrou apenas logs do firmware. Detalhes e limitações estão no
+roadmap.
 
 ## Execução: planejado, não entregue
 
@@ -144,19 +145,22 @@ make run-vnc ARCHI=x86_64
 make run-vnc ARCHI=aarch64
 ```
 
-Não use esses comandos como evidência de suporte atual. O Makefile existente
-usa flags x86 para todos os caminhos e precisa de configuração por arquitetura,
-firmware configurável e fallback TCG.
+O Makefile já separa flags por arquitetura, mas ainda precisa detectar KVM com
+fallback TCG, tornar o firmware configurável e completar a validação do shell.
+Use os resultados do roadmap, não a existência dos alvos, como evidência do
+que funciona.
 
-A demo WebAssembly também ainda não existe. Ela depende das etapas de boot,
-shell serial e validação de `qemu-wasm` nas duas arquiteturas.
+Existe apenas um esqueleto HTML em `kernel/web/`; ainda não há demo WebAssembly
+funcional nem build `qemu-wasm` do projeto. Essa etapa depende de boot, shell
+serial e validação do emulador nas duas arquiteturas.
 
 ## Testes
 
-Não há suíte funcional hoje. `cargo test` falha porque o binário de teste também
-carrega o `#[panic_handler]` do kernel. O planejado é separar componentes
-testáveis em host do runtime bare-metal e cobrir especialmente PMM, console e
-entrada.
+Não há suíte funcional hoje. `cargo test --target x86_64-unknown-linux-gnu`
+falha com múltiplas definições de `core` porque a configuração global de
+`build-std` também afeta o build de host. É necessário separar componentes
+testáveis e sua configuração do runtime bare-metal, cobrindo especialmente PMM,
+console e entrada.
 
 ## Documentos de trabalho
 
@@ -164,8 +168,6 @@ entrada.
   riscos, etapas e critérios de aceite.
 - [DUVIDAS.md](DUVIDAS.md): perguntas abertas para o autor, com sugestões de
   padrão quando houver uma escolha recomendada.
-- [docs/description.md](docs/description.md): anotação inicial, não uma lista
-  confiável do que já funciona.
 
 O roadmap é temporário e deve ser revisto após cada etapa. Nada é considerado
 concluído apenas porque compila: boot exige log, comportamento exige teste.

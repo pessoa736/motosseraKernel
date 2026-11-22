@@ -1,42 +1,47 @@
 # ROADMAP.sketch — motosseraKernel
 
-Documento temporário de análise e priorização, gerado em 2026-11-20 a partir do
-commit `e66e9be` (branch `master`) mais a alteração local não commitada em
-`kernel/Cargo.lock`. Não é um plano com prazos; é uma fila de trabalho para
-revisar a cada etapa concluída.
+Documento temporário de análise e priorização, iniciado em 2026-11-20 a partir
+do commit `e66e9be` e atualizado em 2026-11-21 após a revisão da reorganização,
+dos builds multiarquitetura e dos primeiros boots em QEMU. A referência de
+partida é o commit `6cf568d` mais as alterações locais revistas nessa data.
+Não é um plano com prazos; é uma fila de trabalho para revisar a cada etapa.
 
 ## 1. Estado do projeto
 
 Kernel bare-metal hobby em Rust `#![no_std]`, com Limine como bootloader, heap
 próprio, PMM por bitmap, framebuffer com backbuffer, serial para debug, um shell
-com Rhai embutido e um gerador de fontes TTF separado.
+com Rhai embutido e um gerador de fontes TTF separado. O manifesto, o Makefile,
+a toolchain e os linker scripts ficam na raiz; o código está em `source/`, com
+constantes compartilhadas extraídas para `source/definitions/`.
 
-Avaliação direta: hoje é um esqueleto de boot com bastante código pela frente,
-não um sistema utilizável. O x86_64 compila com ajustes de ambiente; o caminho
-ARM que o Makefile oferece não linka; e o shell, mesmo quando o boot progride,
-não exibe texto nem resultados. O maior ganho agora não é adicionar recurso:
-é fechar um fluxo mínimo de ponta a ponta (boot -> log -> comando -> resposta)
-e só depois expandir.
+O manifesto voltou a declarar o binário e os builds release de x86_64 e
+AArch64 softfloat passam. O Makefile gera as duas ISOs. No x86_64, o QEMU
+alcança serial, PMM, framebuffer e a tela de boas-vindas. No ARM, o firmware
+inicia, mas o kernel não emite log: o build não aplica `linker_aarch64.ld` ao
+target softfloat. O shell ainda não foi alcançado nem testado, `cargo test` em
+host falha com `core` duplicado, e a página WebAssembly é apenas um esqueleto.
+A prioridade é corrigir a configuração de link ARM e chegar ao prompt; depois,
+fechar o fluxo comando -> resposta e os testes automatizados.
 
 ## 2. O que já existe e o que foi verificado
 
 ### Produto e arquitetura (inspecionado)
 
-- Entrada `_start` em `kernel/src/main.rs:183`, requests Limine (base revision,
+- Entrada `_start` em `source/main.rs:193`, requests Limine (base revision,
   stack, framebuffer, HHDM, memmap) e inicialização em ordem: serial -> heap ->
-  PMM -> vídeo -> shell (`kernel/src/main.rs:63`).
+  PMM -> vídeo -> shell (`source/main.rs:74`).
 - Heap com `linked_list_allocator` sobre a maior região `MEMMAP_USABLE`,
-  limitada a 32 MiB (`kernel/src/memory.rs:28`).
-- PMM por bitmap com `allocate_frame`/`free_frame` (`kernel/src/pmm.rs:101`).
+  limitada a 32 MiB (`source/memory.rs:28`).
+- PMM por bitmap com `allocate_frame`/`free_frame` (`source/pmm.rs:101`).
 - Vídeo com `DMatrix<u32>` de backbuffer, alpha blending e fonte bitmap 16x16
-  (`kernel/src/video.rs:96`, `kernel/src/db_font.rs`).
+  (`source/video.rs`, `source/db_font.rs`).
 - Serial x86 (COM1) e ARM (PL011 em `0x0900_0000`) para I/O e log
-  (`kernel/src/io.rs`, `kernel/src/debuglog.rs`).
+  (`source/io.rs`, `source/debuglog.rs`).
 - Shell com `TermUI`, histórico, buffer de saída e `rhai::Engine`
-  (`kernel/src/shell.rs:96`).
+  (`source/shell.rs:94`).
 - Gerador de fontes TTF -> `[[u16;16];128]` (`tools/fontGenerator`).
 
-### Executado nesta análise
+### Executado na análise inicial (commit `e66e9be`, estrutura `kernel/`)
 
 - `cargo build --release --target x86_64-unknown-none -Zbuild-std=core,alloc`
   com `CARGO_PROFILE_RELEASE_PANIC=abort`: PASSOU, com 43 warnings.
@@ -46,7 +51,7 @@ e só depois expandir.
 - `cargo build --release --target aarch64-linux-android ...`: FALHOU no link:
   `cc: error: unknown argument: '-zmax-page-size=0x1000'`.
 - `cargo test --target aarch64-linux-android`: FALHOU,
-  `duplicate lang item panic_impl` (`kernel/src/debuglog.rs:62`).
+  `duplicate lang item panic_impl` (`kernel/src/debuglog.rs:62` no layout antigo).
 - `cargo build --manifest-path tools/fontGenerator/Cargo.toml`: PASSOU.
 - ISO ARM montada em scratch e bootada em QEMU `virt` + UEFI (EDK2):
   - com 128 MiB o próprio Limine aborta: `High memory allocator: Out of memory`;
@@ -59,113 +64,132 @@ e só depois expandir.
   está em `/home/Documemts/motosseraKernel/...` (configuração obsoleta após
   mover o diretório).
 
+### Verificação da reorganização e das alterações atuais (2026-11-21)
+
+- O pull até `6cf568d` foi concluído por fast-forward e as alterações locais
+  foram preservadas nos caminhos novos. Depois disso, `[[bin]]` passou a
+  apontar para `source/main.rs` e `wasm-pack` foi retirado das dependências
+  do kernel, eliminando os erros de `std` nas dependências.
+- `cargo build --release --target x86_64-unknown-none`: PASSOU, com 39
+  warnings no crate. `cargo build --release --target
+  aarch64-unknown-none-softfloat`: PASSOU, também com 39 warnings.
+- `llvm-readelf`: o x86_64 tem entrada `0xffffffff8020a940`, compatível com
+  `linker.ld`. O ARM tem entrada `0x28c6f0` e segmentos a partir de
+  `0x200000`; portanto, `linker_aarch64.ld` não foi aplicado.
+- `make -s kernel.iso ARCHI=x86_64` e `make -s kernel.iso ARCHI=aarch64`,
+  com artefatos direcionados ao scratch: PASSARAM. O Limine configurou e
+  compilou os ports x86_64 BIOS/UEFI e AArch64 UEFI.
+- QEMU x86_64 com timeout de 20 s: exit 137 esperado pelo timeout; a serial
+  registrou `[ BOOT ] A/B`, PMM, framebuffer e início de `welcome`. Não
+  alcançou o prompt nem executou comandos.
+- QEMU AArch64 `virt` + EDK2 com timeout de 20 s: exit 137 esperado; a serial
+  mostrou apenas firmware/UEFI, sem `[ BOOT ] A` do kernel.
+- `cargo test --target x86_64-unknown-linux-gnu`: FALHOU com `duplicate lang
+  item`/`core` duplicado devido ao `build-std` global. Nenhuma suíte passou.
+
 ## 3. Bugs e inconsistências confirmados, por impacto
 
 ### P0 — impede boot ou uso básico
 
-- [ ] Makefile ARM usa o alvo errado: `aarch64-linux-android` para um kernel
-  bare-metal (`kernel/Makefile:12`). Além de ser um target de userspace
-  Android, o link falha porque o driver `cc` rejeita `-zmax-page-size`
-  (`kernel/.cargo/config.toml:11`). O alvo coerente é `aarch64-unknown-none`,
-  que compilou nesta análise.
-- [ ] Boot ARM trava antes do primeiro log do kernel (reproduzido em QEMU).
-  Evidência forte de causa: o Limine na base revision 6 entrega AArch64 com
-  FP/SIMD desativado (CPACR_EL1 = 0), mas o `_start` gerado pelo Rust executa
-  NEON logo após `boot_marker` (`movi v0.2d`, `ldr q...`, `stp q...`), e não
-  há vetor de exceções instalado — o trace do QEMU termina em laço de
-  `Prefetch Abort` em `0x200`. Tratar como causa provável muito bem
-  fundamentada; confirmar com single-step/GDB ou com o stub da etapa 1.
-  Endereço de entrada observado: `0xffffffff8020f2b4`.
-- [ ] 128 MiB padrão do Makefile não basta para o Limine carregar este kernel
-  em ARM/UEFI (`kernel/Makefile:2`). Com 256 MiB o carregamento passa.
+- [ ] O Makefile seleciona `aarch64-unknown-none-softfloat`, mas
+  `.cargo/config.toml` só configura `aarch64-unknown-none` e
+  `aarch64-linux-android`. Assim, `linker_aarch64.ld` não é aplicado: o ELF
+  atual entra em `0x28c6f0` em vez de `0xffffffff80000000`. Criar a seção de
+  rustflags para o target softfloat e substituir o target Android residual em
+  `rust-toolchain.toml`; depois repetir build, leitura do ELF, ISO e boot.
+- [ ] O boot ARM continua sem `[ BOOT ] A`. A hipótese anterior de NEON com
+  FP/SIMD desativado e exceção em `0x200` ainda precisa ser reavaliada depois
+  que o linker correto for aplicado. O stub de entrada e os vetores de
+  exceção continuam pendentes.
+- [ ] O x86_64 chega à tela de boas-vindas, mas não ao prompt no smoke test de
+  20 s. É preciso medir a duração da intro e validar a transição para o loop
+  do shell antes de testar comandos.
 - [ ] Shell não produz saída visível nem fecha o ciclo de comando:
-  `TermUI::writechar` está vazio (`kernel/src/shell.rs:69`), nada escreve no
-  `buffer` gráfico para renderizar, e o prompt é inserido na própria linha de
-  entrada (`kernel/src/shell.rs:229`). Após Enter, `status` permanece em 1,
-  então nem resultado nem novo prompt aparecem (`kernel/src/shell.rs:226`).
-- [ ] `cargo test` não compila por causa do `#[panic_handler]` no binário de
-  testes (`kernel/src/debuglog.rs:62`). Não existe nenhum teste hoje, então
-  a suíte precisa de estrutura, não só de correção pontual.
-- [ ] `make limine` falha após a mudança de caminho do projeto; o Makefile
-  também sempre copia `BOOTX64.EFI`, mesmo em ARM (`kernel/Makefile:52`), e
-  sempre força BIOS + UEFI x86 no configure (`kernel/Makefile:32`).
+  `TermUI::writechar` está vazio, o buffer gráfico não recebe o conteúdo, o
+  prompt entra na linha executada e `status` não retorna ao prompt após Enter.
+- [ ] `cargo test --target x86_64-unknown-linux-gnu` falha com múltiplas
+  definições de `core` devido ao `build-std` global. Separar a configuração de
+  testes em host do runtime bare-metal antes de adicionar a suíte.
 
 ### P1 — comportamento errado quando o caminho é exercitado
 
-- [ ] `make run` usa opções x86 para qualquer arquitetura: `-machine q35`,
-  `-cpu host,+topoext`, `-enable-kvm` (`kernel/Makefile:68`). Em ARM precisa
-  de `virt`, firmware UEFI e CPU válida; KVM não é portátil.
+- [ ] `make run` já separa máquina e CPU, mas ativa KVM sempre que host e
+  target coincidem, usa caminho fixo de firmware ARM e exige GTK. Detectar
+  aceleração com fallback TCG, configurar firmware/display e capturar a serial
+  em arquivo. O bootstrap do Limine também continua sendo refeito a cada build;
+  falta um alvo idempotente.
 - [ ] A interface Rhai só aceita resultado `String`: `eval::<String>`
-  (`kernel/src/shell.rs:212`) faz `1 + 2` cair no ramo de erro, e todo erro
-  vira a string genérica `"erro"` (`kernel/src/shell.rs:217`).
+  (`source/shell.rs:210`) faz `1 + 2` cair no ramo de erro, e todo erro
+  vira a string genérica `"erro"`.
 - [ ] `clear_input_line` sobrescreve bytes com espaços mas não chama
-  `String::clear` (`kernel/src/shell.rs:142`), deixando `len()` antigo;
+  `String::clear` (`source/shell.rs:140`), deixando `len()` antigo;
   `current_line_pos` nunca é atualizado, e `save_in_historic_command` usa
-  `insert(pos)` com essa posição (`kernel/src/shell.rs:151`).
+  `insert(pos)` com essa posição.
 - [ ] Geometria do terminal é incompatível com a fonte: `TermUI` usa células
-  de 8 px (`kernel/src/shell.rs:13`), enquanto `draw_char` desenha 16x16 e
-  `draw_string` avança 16 px (`kernel/src/video.rs:238`, `kernel/src/video.rs:261`).
+  de 8 px, enquanto `draw_char` desenha 16x16 e `draw_string` avança 16 px
+  (`source/video.rs:228`, `source/video.rs:251`).
 - [ ] `TermUI::draw` chama `draw_char` com x/y trocados e subtrai `view_pos`
-  (células) como se fosse pixels (`kernel/src/shell.rs:88`);
-  `view_mut(view_pos, self.size)` com scroll > 0 estoura os limites da matriz
-  (`kernel/src/shell.rs:79`).
-- [ ] `Vga::init` ignora o retorno `bool` no chamador (`kernel/src/main.rs:80`)
+  (células) como se fosse pixels (`source/shell.rs:72-87`);
+  `view_mut(view_pos, self.size)` com scroll > 0 estoura os limites da matriz.
+- [ ] `Vga::init` ignora o retorno `bool` no chamador (`source/main.rs:90`)
   e aloca backbuffer fixo de 1920x1080 antes de saber o modo real
-  (`kernel/src/video.rs:124`). Falha de framebuffer vira uso posterior de
+  (`source/video.rs:114`). Falha de framebuffer vira uso posterior de
   `unwrap`, não diagnóstico.
-- [ ] Escrita de pixels assume layout ARGB e 32 bpp, ignorando `bpp`,
-  `red_mask_shift`, `blue_mask_shift` etc. do Limine (`kernel/src/video.rs:138`).
-  Funciona no caso comum do QEMU, mas não é o contrato completo do protocolo.
+- [ ] Escrita de pixels assume layout ARGB e 32 bpp, ignorando `bpp` e as
+  máscaras de cor do Limine. Funciona no caso comum do QEMU, mas não é o
+  contrato completo do protocolo.
 - [ ] Não há IDT/vetor de exceções nem fonte de interrupção: `TIMER_TICKS`
-  nunca é incrementado (`kernel/src/timer.rs:7`), logo `Clock` não mede tempo
+  nunca é incrementado (`source/timer.rs:7`), logo `Clock` não mede tempo
   real. `TimeInteration` conta iterações de loop, não duração
-  (`kernel/src/timer.rs:82`) — a intro "de 1 s" é 1000 iterações.
-- [ ] Laços de espera ocupam 100% da CPU: loop principal (`kernel/src/main.rs:105`),
-  `panic` (`kernel/src/debuglog.rs:69`), polling da serial (`kernel/src/io.rs:53`).
+  (`source/timer.rs:82`) — a intro "de 1 s" é 1000 iterações.
+- [ ] Laços de espera ocupam CPU: loop principal (`source/main.rs:115`) e
+  polling da serial (`source/io.rs`). O panic agora usa `hlt`/`wfe`, mas os
+  demais loops continuam.
 
 ### P2 — higiene e manutenção
 
-- [ ] Serial inicializada duas vezes: existe `Kernel.io` e outra instância em
-  `Shell.io`, ambas com `init` (`kernel/src/main.rs:59`, `kernel/src/shell.rs:100`).
-  O driver de debug em `debuglog.rs` é uma terceira implementação, sem
-  espera de transmissão pronta.
-- [ ] `panic_handler` só imprime detalhes em x86_64; em ARM entra mudo no loop
-  (`kernel/src/debuglog.rs:61`).
+- [ ] Serial continua inicializada duas vezes: existe `Kernel.io` e outra
+  instância em `Shell.io`, ambas com `init` (`source/main.rs:79`,
+  `source/shell.rs:131`). O boot x86_64 confirma a duplicação no log.
 - [ ] `unsafe impl Sync for Kernel` + `static mut` + `Mutex::get_mut`
-  (`kernel/src/main.rs:172`, `kernel/src/main.rs:179`) gera referência mutável
-  a estático sem travar; o compilador já emite `static_mut_refs`.
-- [ ] 43–54 warnings por build: imports mortos, código morto, nomes fora de
-  snake_case, `generic_const_exprs` incompatível com o novo solver
-  (`kernel/src/main.rs:3`), `build.rs` vazio com dependência `cc` sem uso.
-- [ ] `Cargo.lock` está versionado mas também coberto por `.gitignore`
-  (`*.lock`, `Cargo.lock`), e a alteração local com nalgebra/rhai/spin ainda
-  não foi commitada. Decidir: lock rastreado e fora do ignore, ou ignorado de
-  verdade. Para kernel, lock commitado é a escolha sensata.
+  (`source/main.rs:182`, `source/main.rs:200`) gera referência mutável
+  a estático sem travar; o compilador atual ainda emite `static_mut_refs`.
+- [ ] Cada build gera 39 warnings no crate: imports/código mortos, nomes fora
+  de snake_case, `generic_const_exprs` incompatível com o novo solver e
+  `build.rs` vazio com `cc` sem uso. Há também o warning de configuração
+  `unused config key build.targets`; a chave correta é `build.target`.
+- [ ] `Cargo.lock` do kernel foi removido na reorganização e o nome continua
+  coberto por `.gitignore` (`*.lock`, `Cargo.lock`); apenas
+  `tools/fontGenerator/Cargo.lock` permanece rastreado. Decidir: versionar o
+  lock raiz fora do ignore, ou ignorá-lo de verdade. Para kernel, lock
+  commitado é a escolha sensata.
 - [ ] `KERNEL_HEAP_SIZE_LIMIT` existe mas o valor 32 MiB está repetido inline
-  (`kernel/src/memory.rs:20`, `kernel/src/memory.rs:48`).
+  (`source/memory.rs:20`, `source/memory.rs:48`).
 
 ## 4. Riscos e pontos não verificados
 
-- Boot x86_64 em QEMU: não executado (emulador ausente neste ambiente).
-  A ISO foi gerada e o BIOS instalado; nada além disso está provado.
-- Causa exata do travamento ARM: cadeia NEON/exceção é a hipótese com melhor
-  evidência; ainda não foi demonstrada por depuração instrução a instrução.
+- Boot x86_64 em QEMU: executado até a tela de boas-vindas. Prompt, comandos,
+  formatos de pixel fora do caso padrão e hardware real continuam sem teste.
+- Causa atual do bloqueio ARM: o linker script não é aplicado ao target
+  softfloat, comprovado pelo ELF. A hipótese NEON/exceção deve ser reavaliada
+  somente depois dessa correção.
 - PMM: `free_frame` não valida alinhamento, limites nem double-free
-  (`kernel/src/pmm.rs:62`); `allocate_frame` faz varredura linear do bitmap
-  (`kernel/src/pmm.rs:48`). Nenhum dos dois foi exercido por teste.
+  (`source/pmm.rs:62`); `allocate_frame` faz varredura linear do bitmap
+  (`source/pmm.rs:48`). Nenhum dos dois foi exercido por teste.
 - Heap: usa a maior região "usable" sem alinhar explicitamente o início;
   comportamento em mapas de memória fragmentados não foi testado.
 - Cor e pitch do framebuffer em hardware real ou modos != 32 bpp: não testado.
 - UART ARM está fixa no endereço do QEMU `virt`; outras máquinas ARM precisam
-  de DTB ou configuração (`kernel/src/io.rs:9`).
+  de DTB ou configuração (`source/definitions/io.rs:8-11`).
 - `unsafe { bitmap.set_len(...) }` + escrita volátil no PMM
-  (`kernel/src/pmm.rs:135`) funciona, mas é um ponto a revisitar por
+  (`source/pmm.rs:135`) funciona, mas é um ponto a revisitar por
   clareza/segurança, não um bug demonstrado.
 - [ ] Desempenho: `swap_buffers` copia pixel a pixel com escrita volátil
-  (`kernel/src/video.rs:202`), e `set_pixel` faz blend mesmo após escrever
-  cor opaca (`kernel/src/video.rs:176`). Medir antes de otimizar.
-- QEMU no PC: não testado nesta análise; os comandos serão projetados para
-  TCG como fallback, mas precisam ser validados no hardware dele.
+  (`source/video.rs:192`), e `set_pixel` faz blend mesmo após escrever
+  cor opaca (`source/video.rs:166`). Medir antes de otimizar.
+- QEMU no PC: x86_64 e AArch64 foram executados com TCG e timeout. O alvo
+  `make run`, KVM opcional, display GTK e VNC ainda não foram validados de
+  ponta a ponta.
 - VNC no Termux: o QEMU instalado anuncia suporte a VNC e websocket em
   `-vnc help`, mas nenhuma sessão de cliente foi testada ainda.
 - WebAssembly: `qemu-wasm` declara suporte experimental a guests x86_64 e
@@ -181,14 +205,19 @@ e só depois expandir.
 
 ## 5. Lacunas de engenharia
 
-- [ ] Nenhum teste unitário, de integração ou smoke de boot.
-- [ ] Nenhuma CI; builds dependem de flags não registradas
-  (`-Zbuild-std=core,alloc`, `CARGO_PROFILE_RELEASE_PANIC=abort`).
-- [ ] Sem `rust-toolchain.toml`: o projeto exige nightly e componentes
-  `rust-src` (e alvos), mas isso só existe na máquina do autor.
-- [ ] Makefile sem alvos separados por arquitetura, sem stamp de configure do
-  Limine, sem checagem de ferramentas e sem `make help`.
-- [ ] Código antigo comentado em massa em `kernel/src/shell.rs:256` em diante;
+- [ ] Nenhum teste unitário, de integração ou smoke automatizado. Existe um
+  smoke manual com logs em scratch, mas ainda não há script/CI reproduzível.
+- [ ] Nenhuma CI. `panic = "abort"` e `build-std` foram validados nos builds
+  release, mas a mesma configuração quebra testes de host com `core`
+  duplicado. `build.targets` também precisa ser corrigido para `build.target`.
+- [ ] `rust-toolchain.toml` já declara nightly e `rust-src`, mas mantém
+  `aarch64-linux-android` enquanto o Makefile usa
+  `aarch64-unknown-none-softfloat`. Alinhar a lista e separar o target WASM do
+  crate web do toolchain do kernel.
+- [ ] Makefile tem condicionais por arquitetura, mas não oferece alvos de
+  conveniência separados, stamp de configure do Limine, checagem de
+  ferramentas nem `make help`.
+- [ ] Código antigo comentado em massa na parte final de `source/shell.rs`;
   renomear tipos como `InputOutputSistem`, `TimeInteration`, `Vga`
   (framebuffer, não VGA) quando tocar cada módulo — sem refactor cosmético
   separado.
@@ -198,14 +227,15 @@ e só depois expandir.
 
 ## 6. Lacunas de documentação
 
-- [x] README inicial com requisitos, estado real, arquitetura e comandos de
-  build verificados (`README.md`).
+- [x] README inicial e atualização da estrutura, dos builds verificados e das
+  limitações atuais (`README.md`). A anotação antiga `docs/description.md` foi
+  removida por estar desatualizada.
+- [ ] Atualizar `AGENTS.md`: ainda contém caminhos `kernel/src/` e exemplos de
+  toolchain que precisam refletir `source/` e o target ARM softfloat.
 - [ ] Expandir o README após a Etapa 1 com os comandos exatos e validados de
   boot por arquitetura.
 - [ ] Explicação curta da arquitetura: ordem de init, mapa de memória,
   convenção de cores, papel da serial vs. terminal gráfico.
-- [ ] `docs/description.md` existe, mas descreve intenção, não o estado real;
-  atualizar após o MVP.
 - [ ] Registrar a decisão de escopo: shell interativo via serial e/ou terminal
   gráfico, e o papel do Rhai (linguagem de comandos do kernel?).
 - [ ] Guias de execução: QEMU no PC, VNC local no Termux, build/execução WASM
@@ -246,22 +276,30 @@ e só depois expandir.
   distintos, inclusive diante de um click. O sistema terá teclado virtual,
   mas isso não entra no MVP nem substitui o suporte a teclado físico.
 
-Saída: registrar essas decisões no README quando ele for criado.
+Saída: decisões registradas no README.
 
 ### Etapa 1 — build e boot reproduzíveis
 
-- [ ] Adicionar `rust-toolchain.toml` (nightly + `rust-src` + alvos) e perfil
-  `panic = "abort"`; registrar o uso de `-Zbuild-std=core,alloc`.
-- [ ] Corrigir o Makefile: `aarch64-unknown-none`, RAM >= 256M, EFI por
-  arquitetura (`BOOTAA64.EFI` vs `BOOTX64.EFI`), flags de QEMU separadas,
-  sem KVM obrigatório (TCG no Android/Termux).
-- [ ] Reconfigurar/regerar o Limine no caminho atual e transformar bootstrap
-  em alvo idempotente; documentar dependências (`nasm`, `mtools`, etc.).
-- [ ] x86_64: instalar QEMU x86 e validar o log `[BOOT] A` até o shell.
-- [ ] ARM: stub de entrada em assembly que habilita FP/SIMD antes de chamar
-  Rust, e confirma a hipótese NEON; adicionar vetor de exceções mínimo com
-  log, para que falhas deixem de ser um laço mudo em `0x200`.
-- [ ] Smoke test de boot com timeout e assertiva sobre o log serial.
+- [x] Restaurar um target válido no `Cargo.toml` apontando para
+  `source/main.rs`, integrar `source/definitions/` e repetir os builds release
+  das duas arquiteturas. Ambos passaram com 39 warnings.
+- [x] Adicionar `rust-toolchain.toml` com nightly e `rust-src`, além dos
+  perfis `panic = "abort"` e `build-std`. Resta alinhar os targets ARM e a
+  configuração de testes em host.
+- [ ] Concluir a correção do Makefile e da configuração: as ISOs x86_64 e
+  AArch64 são geradas com RAM >= 256M e EFI por arquitetura; aplicar o linker
+  ARM ao target softfloat, alinhar `rust-toolchain.toml` e tornar KVM opcional
+  com fallback TCG.
+- [ ] Tornar o bootstrap do Limine idempotente e documentar dependências. O
+  configure/build atual passou para x86_64 BIOS/UEFI e AArch64 UEFI, mas é
+  reexecutado a cada chamada.
+- [ ] x86_64: validar o log `[BOOT] A` até o shell. O boot atual alcança
+  `welcome`, mas não houve prompt nem comandos no smoke de 20 s.
+- [ ] ARM: aplicar o linker correto e, depois, implementar stub de entrada que
+  habilita FP/SIMD e vetor de exceções mínimo com log. Reavaliar a hipótese
+  NEON somente com o ELF corretamente linkado.
+- [ ] Transformar o smoke manual em teste automatizado com timeout e assertivas
+  sobre a serial das duas arquiteturas.
 - [ ] QEMU nativo no PC: alvo `make run ARCHI=...`, com aceleração opcional
   detectada (KVM quando existir; TCG sempre disponível), firmware EDK2
   configurável por variável de ambiente e logs separados por arquitetura.
@@ -278,8 +316,8 @@ chegam ao mesmo marco de log, num checkout limpo, com comandos documentados.
 
 - [ ] Extrair o bitmap do PMM e o alocador para código testável em host;
   testes de alocação/liberação, esgotamento, double-free e alinhamento.
-- [ ] Resolver o conflito do panic handler nos testes (separar runtime
-  bare-metal de biblioteca testável) em vez de apagar o handler.
+- [ ] Separar a configuração de testes em host do runtime bare-metal,
+  incluindo `build-std` e panic handler, sem apagar o handler do kernel.
 - [ ] Reservar explicitamente heap/bitmap no PMM e validar entradas do Limine.
 - [ ] IDT no x86_64 + PIT (ou HPET) para ticks reais; remover a falsa noção de
   tempo de `TimeInteration` ou renomeá-la para contador de frames.
@@ -315,6 +353,10 @@ em resolução menor que 1920x1080.
 Escopo: usar um emulador de sistema compilado para WebAssembly para executar a
 ISO/ELF existente. Compilar o próprio kernel para WASM seria outro projeto e
 não atende ao requisito de rodar o mesmo sistema bare-metal.
+
+Estado atual: `kernel/web/index.html` é apenas um esqueleto que importa um
+wrapper JS ainda não gerado. Não há build `qemu-wasm`, integração da ISO,
+servidor com COOP/COEP ou testes web.
 
 - [ ] Prova de viabilidade x86_64 com `ktock/qemu-wasm` (experimental), usando
   um runtime publicado ou build containerizado do projeto; testar a imagem
