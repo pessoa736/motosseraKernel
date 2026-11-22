@@ -5,14 +5,12 @@ use alloc::vec::{Vec};
 use alloc::vec;
 use na::DMatrix;
 use rhai::Engine;
-use crate::debuglog::{dprint, dwrite};
+use crate::debuglog::*;
 use crate::io::InputOutputSistem;
-use crate::video::{MAX_HEIGHT, MAX_WIDTH, OFFWHITE_COLOR, Vga};
+use crate::video::{OFFWHITE_COLOR, Vga};
 
 
-const MAXCOLS: usize = MAX_WIDTH / 8; 
-const MAXROWS: usize = MAX_HEIGHT / 8;
-
+use crate::definitions::shell::*;
 
 
 
@@ -233,6 +231,7 @@ impl Shell
             {
                 
                 let ch = self.io.read_char();
+                dwrite(&ch.to_string());
                 self.write_char(ch);
                 
             }
@@ -245,6 +244,7 @@ impl Shell
             _ => todo!()
         };
 
+        dwrite(&(self.input_line.as_ref().unwrap()));
         
     }
 

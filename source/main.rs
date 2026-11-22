@@ -1,9 +1,18 @@
 #![no_std]
 #![no_main]
 #![feature(generic_const_exprs)]
+#![feature(lang_items)]
 // #![feature(inherent_associated_types)]
 #![allow(incomplete_features)]
 // #![feature(abi_x86_interrupt)]
+
+
+#[no_mangle]
+pub extern "C" fn _Unwind_Resume() -> ! { loop {}}
+
+#[lang = "eh_personality"]
+extern "C" fn rust_eh_personality() {}
+
 
 use core::mem::MaybeUninit;
 use core::time::Duration;
@@ -31,8 +40,9 @@ mod math;
 mod shell;
 mod utils;
 mod timer;
+mod definitions;
 
-const SKIPINTRO: bool = true;
+const SKIPINTRO: bool = false;
 
 
 #[no_mangle]

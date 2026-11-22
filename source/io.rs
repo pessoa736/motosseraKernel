@@ -1,36 +1,23 @@
-use core::{arch::asm};
-use alloc::vec::Vec;
-
-use crate::{debuglog::dprint};
 
 
 
-/// locais da memoria responsaveis pela entrada e saida do usuario
-#[cfg(target_arch = "aarch64")] pub const UARCH0_DR: *mut u32 = 0x0900_0000 as *mut u32; 
-#[cfg(target_arch = "aarch64")] pub const UARCH0_FR: *const u32 = 0x0900_0018 as *const u32; 
-#[cfg(target_arch = "aarch64")] pub const TXFF: u32 = 1<<5;
-#[cfg(target_arch = "aarch64")] pub const RXFE: u32 = 1<<4;
+#[cfg(target_arch = "x86_64")] 
+mod arch {
+    use core::{arch::asm};
+    use crate::debuglog::dprint;
 
-#[cfg(target_arch = "x86_64")]  pub const COM1: u16 = 0x3f8 ;
+    #[inline(always)]
+    pub unsafe fn outb(port: u16, data: u8) {
+        asm!(
+            "out dx, al",
+            in("dx") port,
+            in("al") data,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
 
-
-
-
-#[inline(always)]
-pub unsafe fn outb_x86_64(port: u16, data: u8) {
-    #[cfg(target_arch = "x86_64")]
-    {asm!(
-        "out dx, al",
-        in("dx") port,
-        in("al") data,
-        options(nomem, nostack, preserves_flags)
-    );}
-}
-
-#[inline(always)]
-pub unsafe fn inb_x86_64(port: u16) -> u8
-{
-    #[cfg(target_arch = "x86_64")]
+    #[inline(always)]
+    pub unsafe fn inb(port: u16) -> u8
     {
         let ret: u8;
         asm!(
@@ -39,42 +26,69 @@ pub unsafe fn inb_x86_64(port: u16) -> u8
             out("al") ret,
             options(nomem, nostack, preserves_flags)
         );
-        return ret ;
-    }
 
-    #[cfg(not(target_arch = "x86_64"))] 0u8
-}
+        return ret;
+    }  
 
+    use crate::definitions::io::COM1;
 
-pub unsafe fn io_read() -> u8
-{
-    #[cfg(target_arch = "x86_64")] 
+    pub unsafe fn io_read() -> u8
     {
-        while (inb_x86_64(COM1+5) & 0x01) == 0 {};
-        inb_x86_64(COM1)
+        while (inb(COM1+5) & 0x01) == 0 {};
+        inb(COM1)
     }
 
-    #[cfg(target_arch = "aarch64")]
-    { 
-        while (UARCH0_FR.read_volatile() & RXFE) != 0 {}
-        (UARCH0_DR.read_volatile()  & 0xFF)as u8 
+    pub unsafe fn io_write(data: u8)
+    {
+        while (inb(COM1 + 5) & 0x20) == 0 {};
+        outb(COM1, data);
+    }
+
+     pub fn init() {
+        unsafe 
+        {
+            dprint(Some("IO.1"), "interrupições dessativadas");
+            outb(COM1 + 1, 0x00);
+            dprint(Some("IO.2"), "ativou o DLAB");
+            outb(COM1 + 3, 0x80);
+            
+            outb(COM1 + 0, 0x03);
+            outb(COM1 + 1, 0x00);
+            dprint(Some("IO.3"), "Definiu a velocidade");
+            dprint(Some("IO.4"), "desativou o DLAB");
+
+            outb(COM1 + 3, 0x03);
+            dprint(Some("IO.5"), "Configurou os buffers FIFO");
+            outb(COM1 + 2, 0x07);
+            dprint(Some("IO.6"), "Preparar os sinais de controle");
+            outb(COM1 + 4, 0x0b);
+        };
     }
 }
 
-pub unsafe fn io_write(data: u8)
-{
-    #[cfg(target_arch = "x86_64")] {
-        while (inb_x86_64(COM1 + 5) & 0x20) == 0 {}
-        outb_x86_64(COM1, data)
-    }; 
-    
 
-     #[cfg(target_arch = "aarch64")]
-     {
+#[cfg(target_arch = "aarch64")] 
+mod arch {
+
+    use alloc::vec::Vec;
+    use crate::definitions::io::{UARCH0_DR, UARCH0_FR, RXFE, TXFF};
+    
+    pub unsafe fn io_read() -> u8
+    {
+        while (UARCH0_FR.read_volatile() & RXFE) != 0 {}
+        (UARCH0_DR.read_volatile()  & 0xFF) as u8 
+    }
+
+    pub unsafe fn io_write(data: u8)
+    {
         while (UARCH0_FR.read_volatile() & TXFF) != 0 {}
         UARCH0_DR.write_volatile(data as u32);
-     }
+    }
+
+    pub unsafe fn init() {}
+
 }
+
 
 
 pub struct Scancode {
@@ -107,39 +121,22 @@ impl InputOutputSistem {
         }
     }
 
-    
-    
+    pub fn init(&self){
+        use crate::debuglog::dprint;
 
-    pub fn init(&self) {
-        #[cfg(target_arch = "x86_64")]
-        unsafe 
-        {
-            dprint(Some("IO.1"), "interrupições dessativadas");
-            outb_x86_64(COM1 + 1, 0x00);
-            dprint(Some("IO.2"), "ativou o DLAB");
-            outb_x86_64(COM1 + 3, 0x80);
-            
-            outb_x86_64(COM1 + 0, 0x03);
-            outb_x86_64(COM1 + 1, 0x00);
-            dprint(Some("IO.3"), "Definiu a velocidade");
-            dprint(Some("IO.4"), "desativou o DLAB");
-
-            outb_x86_64(COM1 + 3, 0x03);
-            dprint(Some("IO.5"), "Configurou os buffers FIFO");
-            outb_x86_64(COM1 + 2, 0x07);
-            dprint(Some("IO.6"), "Preparar os sinais de controle");
-            outb_x86_64(COM1 + 4, 0x0b);
-        };
+        unsafe {arch::init()};
+        dprint(Some("IO.1"), "serial inicializada");
     }
+   
 
     pub fn read_char(&mut self) -> char {
-        unsafe {io_read() as char}
+        unsafe {arch::io_read() as char}
     }
 
     #[inline(always)]
     pub fn write_char(&self, c: u8) 
     {
-        unsafe { io_write(c); }
+        unsafe { arch::io_write(c); }
     }
 
     #[inline(always)]
