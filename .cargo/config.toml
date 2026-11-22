@@ -1,0 +1,43 @@
+
+
+
+[build]
+targets = ["x86_64-unknown-none"] # "x86_64-unknown-none", "aarch64-linux-android", "wasm32-unknown-unknown"
+
+[unstable]
+build-std = ["core", "alloc", "compiler_builtins"]
+build-std-features = ["compiler-builtins-mem"]
+
+
+[target.aarch64-unknown-none]
+linker = "rust-lld"
+rustflags = [
+    "-C", "link-arg=-Tlinker_aarch64.ld",
+    "-C", "link-arg=-zmax-page-size=0x1000",
+    "-C", "link-arg=-no-pie",
+]
+
+[target.aarch64-linux-android]
+linker = "rust-lld"
+rustflags = [
+    "-C", "link-arg=-Tlinker_aarch64.ld",
+    "-C", "link-arg=-zmax-page-size=0x1000",
+    "-C", "link-arg=-no-pie",
+]
+
+[target.x86_64-unknown-none]
+rustflags = [
+    "-C", "link-arg=-Tlinker.ld",
+    "-C", "link-arg=-zmax-page-size=0x1000",
+    "-C", "code-model=kernel",
+    "-C", "relocation-model=static"
+]
+
+
+
+[profile.release.build-override]
+codegen-units = 1
+opt-level = 0
+
+[profile.dev.build-override]
+opt-level = 0
