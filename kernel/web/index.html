@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+    <meta charset='utf-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1'>
+    <title> motossera kernel </title>
+    <link rel='stylesheet' href='main.css'>
+</head>
+<body>
+    <script type="module">
+        import init, {kernel} from "./MotosseraKernel-wasm.js";
+
+        init().then(()=>{
+            kernel();
+        })
+    </script>
+    
+</body>
+</html>
