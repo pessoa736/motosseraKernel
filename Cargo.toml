@@ -28,3 +28,6 @@ panic = "abort"
 
 [profile.release]
 panic = "abort"
+
+[workspace]
+members = ["xtask"]
