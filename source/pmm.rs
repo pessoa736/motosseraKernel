@@ -3,11 +3,8 @@ use alloc::vec::Vec;
 use limine::request::MemmapResponse;
 use spin::Mutex;
 
-use crate::debuglog::{dprint, dwrite};
-
-
-pub const FRAME_SIZE: usize = 4096;
-
+use crate::debuglog::*;
+use crate::definitions::*;
 
 
 
@@ -66,15 +63,7 @@ impl BitmapFrameAllocator
 
 static PMM: Mutex<Option<BitmapFrameAllocator>> = Mutex::new(None);
 
-// Assinatura de teste: recebe o response diretamente.
-// Na versão real, isso vira `crate::memory::MEMORY_MAP_REQUEST.response().expect(...)`
-// pub fn print_str(s: &[u8]) {
-//     unsafe {
-//         for &c in s {
-//             core::arch::asm!("out dx, al", in("dx") 0x3f8u16, in("al") c, options(nomem, preserves_flags, nostack));
-//         }
-//     }
-// }
+
 
 
 

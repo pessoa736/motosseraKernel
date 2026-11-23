@@ -6,7 +6,7 @@ struct SerialWriter;
 #[cfg(target_arch = "x86_64")]
 mod arch {
     use core::arch::asm;
-    use crate::definitions::io::COM1;
+    use crate::definitions::COM1;
 
     #[inline(always)]
     unsafe fn outb(port: u16, data: u8) {
@@ -44,14 +44,30 @@ mod arch {
     }
 }
 
+
 #[cfg(target_arch = "aarch64")]
 mod arch {
+    use core::sync::atomic::{AtomicUsize, Ordering};
     use core::arch::asm;
-    use crate::definitions::io::{UARCH0_DR, UARCH0_FR, TXFF};
+    
+    use crate::definitions::*;
+
+
+    pub static  HHDM: AtomicUsize = AtomicUsize::new(0xffff_8000_0000_0000);
+
+    #[inline(always)]
+    pub fn uart_dr() -> *mut u32 {
+        (HHDM.load(Ordering::Relaxed) + UART0_PHYS) as *mut u32
+    }
+
+    #[inline(always)]
+    pub fn uart_fr() -> *mut u32 {
+        (HHDM.load(Ordering::Relaxed) + UART0_PHYS + 0x18) as *mut u32
+    }
 
     pub fn write_byte(b: u8) {
         unsafe {
-            while (UARCH0_FR.read_volatile() & TXFF) != 0 {}
+            while (uart_dr().read_volatile() & TXFF) != 0 {}
             UARCH0_DR.write_volatile(b as u32);
         }
     }

@@ -10,7 +10,7 @@ use crate::io::InputOutputSistem;
 use crate::video::{OFFWHITE_COLOR, Vga};
 
 
-use crate::definitions::shell::*;
+use crate::definitions::*;
 
 
 

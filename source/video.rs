@@ -4,7 +4,7 @@ use na::DMatrix;
 use crate::{db_font, debuglog::dprint, timer::TimeInteration};
 
 
-pub use crate::definitions::video::*;
+pub use crate::definitions::*;
 
 /// matriz de cor virtual:
 /// 

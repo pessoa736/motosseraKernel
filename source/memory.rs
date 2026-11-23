@@ -16,9 +16,6 @@ pub static HHDM_REQUEST: HhdmRequest = HhdmRequest::new();
 static ALLOCATOR: LockedHeap = LockedHeap::empty();
 
 
-// Definimos um limite seguro para o heap do Kernel (ex: 32 MB)
-const KERNEL_HEAP_SIZE_LIMIT: usize = 32 * 1024 * 1024; 
-
 pub fn allocator_stats() -> (usize, usize) 
 {
     let h = ALLOCATOR.lock();
@@ -26,7 +23,8 @@ pub fn allocator_stats() -> (usize, usize)
 }
 
 pub fn init() -> (usize, usize) {
-    let hhdm_offset = HHDM_REQUEST
+    let hhdm_offset = 
+        HHDM_REQUEST
         .response()
         .map(|r| r.offset)
         .expect("HHDM request failed - bootloader nao respondeu");
