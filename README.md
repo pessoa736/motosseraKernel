@@ -1,176 +1,163 @@
 # motosseraKernel
 
-Kernel bare-metal experimental, escrito predominantemente em Rust `no_std` e
-iniciado pelo Limine. É um projeto autoral de aprendizado: sistema operacional,
-interface visual e experimentos com linguagem interpretada no mesmo corpo.
+Um kernel feito à mão, em Rust, para aprender o sistema operacional por dentro
+e, no caminho, inventar um com cara própria.
 
-O objetivo não é apenas fazer algo estiloso. A proposta é construir um kernel
-modular, eficiente e mensurável, com identidade própria e funcionalidades
-inventadas pelo autor — sem esconder o que ainda não funciona.
+O motosseraKernel é um projeto autoral de estudo. Ele junta, no mesmo corpo,
+um kernel bare-metal, uma interface visual desenhada pixel a pixel e uma
+linguagem interpretada (Rhai) como forma de conversar com o sistema. A estética
+importa, mas não substitui a base: a meta é um kernel modular, eficiente e
+medido, com funcionalidades que não vêm de um manual de SO.
 
-## Estado atual
+> **Estado: desenvolvimento inicial.** Compila para x86_64 e AArch64, mas ainda
+> não há um sistema utilizável. Este README separa o que existe do que é
+> intenção. Detalhes e evidências estão no [ROADMAP](ROADMAP.md).
 
-**Em desenvolvimento inicial. Não há um sistema utilizável ainda.**
+## Ideias que guiam o projeto
 
-Já existe código para:
+- **Autoral antes de convencional.** O sistema representa o que o autor quer
+  aprender e construir. Não é um produto nem um clone de Linux.
+- **Duas arquiteturas desde o começo.** x86_64 e AArch64 são MVP, não "depois".
+  Uma arquitetura só conta como funcionando se bootou; compilar não basta.
+- **Rhai como voz do sistema.** O shell avalia expressões Rhai
+  (`1 + 2` deve responder `3`). O papel exato da linguagem ainda é uma pergunta
+  em aberto, registrada em [DUVIDAS.md](DUVIDAS.md).
+- **Entrada com origem preservada.** Quando houver mouse, tablet, touch e
+  teclado, cada um chega ao sistema como o que é. Touch não é tratado como
+  click de mouse; se a interface os aproximar, é decisão da UI, nunca perda de
+  informação no driver.
+- **Estética medida.** Efeito visual entra com medição de custo (tempo de boot,
+  tempo por frame, memória), não no escuro.
+- **Sem promessa antes de prova.** Nada é dado como pronto sem log ou teste.
 
-- entrada e requisições do protocolo Limine;
-- heap de 32 MiB sobre memória informada pelo bootloader;
-- alocador físico de frames por bitmap;
-- backbuffer de vídeo, pixels, retângulos e fontes bitmap;
-- serial para debug em x86_64 e AArch64;
-- esqueleto de terminal/shell com Rhai;
-- gerador de fontes TTF em `tools/fontGenerator`.
+## O que já existe
 
-Os dois builds release e as duas ISOs já são gerados, mas o ELF ARM ainda não
-usa o linker script correto e não emite log próprio no QEMU. No x86_64, o boot
-alcança serial, PMM, framebuffer e a tela de boas-vindas; o prompt do shell
-ainda não foi validado. Os testes em host também continuam bloqueados e não há
-uma suíte automatizada. A análise completa, incluindo comandos e limitações,
-está em [ROADMAP.sketch.md](ROADMAP.sketch.md).
+| Peça | Situação |
+|---|---|
+| Boot pelo Limine (x86_64 e AArch64) | Imagens geradas. Boot x86_64 chegou à tela de boas-vindas no QEMU; o ARM precisa ser retestado com o linker corrigido |
+| Heap de 32 MiB sobre a memória informada pelo bootloader | Código existe |
+| Alocador de frames físicos por bitmap | Código existe, sem testes |
+| Vídeo: backbuffer, pixels, retângulos, fonte bitmap 16x16 | Código existe; geometria ainda assume 1920x1080 |
+| Serial de debug (COM1 no x86_64, PL011 no ARM `virt`) | Funciona no x86_64; ARM não verificado |
+| Shell com Rhai | Esqueleto: ainda não fecha o ciclo comando -> resposta |
+| Gerador de fontes TTF (`tools/fontGenerator`) | Compila |
+| Testes automatizados, CI | Não existem |
+| VNC no Termux, demo no navegador (WebAssembly) | Planejados, não implementados |
 
-## Arquiteturas e ambientes pretendidos
+## Rodando
 
-- x86_64 e AArch64, desde o MVP;
-- QEMU nativo no PC;
-- QEMU headless no Termux, com VNC local;
-- navegador, usando emulação da máquina em WebAssembly.
+### Requisitos
 
-No navegador, a intenção é executar a mesma imagem bootável emulada, não
-converter o kernel para `wasm32-unknown-unknown`. O caminho preferido para o
-spike é `ktock/qemu-wasm`; compatibilidade, desempenho e deploy ainda não foram
-verificados.
+- Rust **nightly** com `rust-src` (o `rust-toolchain.toml` já pede isso);
+- Limine e as ferramentas dele (`xorriso`, NASM, mtools, GNU Make);
+- QEMU: `qemu-system-x86_64` e/ou `qemu-system-aarch64`;
+- para ARM, firmware EDK2 (`QEMU_EFI.fd`) e pelo menos 256 MiB de RAM na VM.
 
-## Direção do produto
+O desenvolvimento acontece num PC Linux. O Termux é alvo futuro do modo VNC.
 
-O primeiro objetivo funcional é pequeno e verificável:
-
-1. boot reproduzível nas duas arquiteturas;
-2. logs claros de inicialização;
-3. shell serial interativo com Rhai;
-4. comandos como `help`, `mem` e `version`;
-5. testes do PMM no host;
-6. banner no framebuffer.
-
-Depois vêm terminal gráfico, demo WebAssembly e uma camada de entrada com:
-
-- teclado físico e teclado virtual;
-- mouse, tablet e touch como origens distintas;
-- tracking ID/slot e cancelamento para contatos touch;
-- eventos de compatibilidade sem clicks/toques duplicados.
-
-**Touch não será tratado como se fosse click de mouse.** Se uma interação for
-reutilizada pela interface, isso será uma decisão da UI, nunca perda de origem
-no driver. VNC e WebAssembly terão suas limitações documentadas por teste, não
-por suposição.
-
-## Organização
-
-```text
-Cargo.toml           manifesto e dependências do kernel
-rust-toolchain.toml  toolchain nightly, rust-src e targets
-.cargo/config.toml   build-std e flags de link por arquitetura
-Makefile             build, ISO e execução QEMU (em correção no roadmap)
-linker.ld            layout x86_64
-linker_aarch64.ld    layout ARM (ainda não aplicado ao alvo softfloat)
-limine.conf          configuração de boot
-
-source/              código Rust do kernel
-  definitions/       constantes compartilhadas de I/O, vídeo e shell
-
-kernel/
-  limine/            checkout local do Limine, ignorado pelo Git
-  web/               esqueleto inicial da página para emulação
-
-tools/
-  fontGenerator/     gerador das fontes bitmap
-
-ROADMAP.sketch.md    análise técnica e etapas temporárias
-DUVIDAS.md           decisões de produto pendentes com o autor
-```
-
-O fluxo atual de inicialização é:
-
-```text
-_start
-  -> serial/debug
-  -> heap
-  -> PMM
-  -> framebuffer
-  -> shell
-  -> loop de renderização
-```
-
-## Ferramentas
-
-O build exige Rust nightly com código-fonte da biblioteca padrão (`rust-src`),
-Cargo com suporte a `-Zbuild-std`, Limine, `xorriso`, GNU Make e QEMU. O Limine
-também possui suas próprias dependências de compilação; consulte
-`kernel/limine/INSTALL.md` quando o checkout existir.
-
-No Termux, os pacotes Rust são divididos por componente. É necessário verificar
-a toolchain nightly e `rust-src` instalados; um `cargo` existente não garante
-que os targets bare-metal estejam prontos.
-
-## Build de verificação
-
-Comandos executados na raiz, em 2026-11-21:
+### Compilar
 
 ```sh
 cargo build --release --target x86_64-unknown-none
 cargo build --release --target aarch64-unknown-none-softfloat
 ```
 
-Os dois comandos passaram, cada um com 39 warnings. O Makefile também gerou as
-duas ISOs. O x86_64 usa o linker higher-half esperado; o ARM ainda precisa de
-uma seção `[target.aarch64-unknown-none-softfloat]` em `.cargo/config.toml`
-para aplicar `linker_aarch64.ld`.
+Os dois passaram em 2026-11-23, com warnings. O `readelf` confirma entradas
+no espaço higher-half nas duas arquiteturas (`0xffffffff80209410` no x86_64 e
+`0xffffffff80009598` no ARM).
 
-Compilar e gerar ISO não prova boot. O x86_64 chegou à tela de boas-vindas no
-QEMU; o ARM mostrou apenas logs do firmware. Detalhes e limitações estão no
-roadmap.
+### Gerar a ISO e abrir no QEMU
 
-## Execução: planejado, não entregue
-
-Os alvos abaixo são a interface desejada para a Etapa 1 e ainda precisam ser
-implementados/corrigidos:
+Existem dois caminhos, e ainda não foi decidido qual será o oficial
+([ROADMAP](ROADMAP.md), seção 2):
 
 ```sh
-# QEMU no PC
-make run ARCHI=x86_64
-make run ARCHI=aarch64
-
-# QEMU headless + VNC no Termux
-make run-vnc ARCHI=x86_64
-make run-vnc ARCHI=aarch64
+cargo xtask run x86_64        # ou aarch64; padrão: arquitetura do host
+make run ARCHI=x86_64         # ou aarch64
 ```
 
-O Makefile já separa flags por arquitetura, mas ainda precisa detectar KVM com
-fallback TCG, tornar o firmware configurável e completar a validação do shell.
-Use os resultados do roadmap, não a existência dos alvos, como evidência do
-que funciona.
+Ambos gravam a ISO em `kernel/` e abrem o QEMU. **Nenhum dos dois foi validado
+de ponta a ponta até o prompt.** Limitações conhecidas do `xtask`: liga KVM
+sempre que host e alvo coincidem, usa o firmware ARM em
+`/usr/share/edk2/aarch64/QEMU_EFI.fd`, exige display GTK, não tem timeout e
+grava `qemu.log` na raiz. Não existe alvo `run-vnc`.
 
-Existe apenas um esqueleto HTML em `kernel/web/`; ainda não há demo WebAssembly
-funcional nem build `qemu-wasm` do projeto. Essa etapa depende de boot, shell
-serial e validação do emulador nas duas arquiteturas.
+## Como funciona
 
-## Testes
+Inicialização atual:
 
-Não há suíte funcional hoje. `cargo test --target x86_64-unknown-linux-gnu`
-falha com múltiplas definições de `core` porque a configuração global de
-`build-std` também afeta o build de host. É necessário separar componentes
-testáveis e sua configuração do runtime bare-metal, cobrindo especialmente PMM,
-console e entrada.
+```text
+_start
+  -> serial/debug
+  -> heap
+  -> PMM (frames físicos)
+  -> framebuffer
+  -> shell
+  -> loop de renderização
+```
+
+Organização do repositório:
+
+```text
+Cargo.toml           kernel e workspace (membro: xtask)
+rust-toolchain.toml  nightly, rust-src e targets
+.cargo/config.toml   flags de link por arquitetura e alias `cargo xtask`
+linker.ld            layout x86_64
+linker_aarch64.ld    layout ARM
+limine.conf          configuração de boot
+Makefile             build, ISO e QEMU (convive com o xtask)
+
+source/              código do kernel
+  main.rs              entrada e ordem de init
+  memory.rs, pmm.rs    heap e frames físicos
+  video.rs, db_font.rs framebuffer e fonte
+  io.rs, debuglog.rs   serial e log
+  shell.rs             terminal e Rhai
+  timer.rs, math.rs, utils.rs
+  definitions.rs       constantes compartilhadas
+
+xtask/               build, ISO e QEMU em Rust
+tools/fontGenerator/ gerador das fontes bitmap
+kernel/              artefatos gerados e checkout do Limine (ignorados pelo Git)
+```
+
+## Para onde vai
+
+A ordem completa, com critérios de aceite, está no [ROADMAP](ROADMAP.md). Em
+resumo:
+
+1. **Boot reproduzível** nas duas arquiteturas, com log.
+2. **Memória e tempo confiáveis:** testes do PMM no host, timer real.
+3. **Shell serial de ponta a ponta:** `1 + 2` -> `3`, `help`, `mem`, `version`.
+4. **Terminal gráfico** correto, em qualquer resolução.
+5. **Navegador:** a mesma imagem bootável, emulada em WebAssembly (não o kernel
+   recompilado para `wasm32`). O caminho a testar é `ktock/qemu-wasm`;
+   compatibilidade e deploy ainda não foram verificados.
+6. **Entrada:** teclado físico e virtual, mouse, tablet e touch como origens
+   distintas.
+7. **Base para crescer:** CI, limpeza e a escolha do próximo eixo.
+
+O primeiro marco de produto é pequeno e verificável: um shell serial que avalia
+Rhai e mostra um banner no framebuffer.
+
+## Uso de IA neste repositório
+
+Como o projeto existe para o autor aprender, a IA entra só como apoio, e não
+para escrever o kernel. Ela é usada para:
+
+- **planejar e guiar** o projeto (ordem das etapas, riscos, decisões);
+- **ajudar a documentar** (README, roadmap, dúvidas);
+- **tirar dúvidas** sobre conceitos e ferramentas.
+
+O código do kernel é do autor. A documentação feita com ajuda de IA é revisada
+por ele e pode conter erros: confie nos logs e testes citados, não só no texto.
 
 ## Documentos de trabalho
 
-- [ROADMAP.sketch.md](ROADMAP.sketch.md): avaliação técnica, bugs priorizados,
-  riscos, etapas e critérios de aceite.
-- [DUVIDAS.md](DUVIDAS.md): perguntas abertas para o autor, com sugestões de
-  padrão quando houver uma escolha recomendada.
-
-O roadmap é temporário e deve ser revisto após cada etapa. Nada é considerado
-concluído apenas porque compila: boot exige log, comportamento exige teste.
+- [ROADMAP.md](ROADMAP.md): estado atual com evidências, etapas, riscos e
+  critérios de aceite. É temporário e revisto a cada etapa.
+- [DUVIDAS.md](DUVIDAS.md): decisões de produto que dependem do autor.
+- [AGENTS.md](AGENTS.md): regras para agentes que trabalham neste repositório.
 
 ## Licença
 

@@ -1,201 +1,164 @@
 # AGENTS.md — motosseraKernel
 
-Instruções para agentes que trabalharem neste repositório. Este arquivo cobre o
-projeto; `kernel/limine/AGENTS.md` e `kernel/limine/CONTRIBUTING.md` prevalecem
-dentro do checkout do Limine, mas não use suas regras de estilo C no kernel Rust.
+Instruções para agentes de IA neste repositório. `kernel/limine/AGENTS.md` e
+`kernel/limine/CONTRIBUTING.md` valem apenas dentro do checkout do Limine
+(gerado e ignorado pelo Git); não use as regras de estilo C dele no kernel Rust.
 
-## 1. Antes de mexer
+## 1. Papel da IA aqui
 
-- Leia `README.md`, `ROADMAP.sketch.md` e `DUVIDAS.md`.
-- Rode `git status --short --branch` antes de editar. O working tree pode ter
-  trabalho do Davi, inclusive `kernel/Cargo.lock` modificado.
+Este repositório existe para o estudo de Davi. O kernel é escrito por ele. A IA
+é apoio, e só para três coisas:
+
+1. **Planejar e guiar:** ordem das etapas, riscos, decisões, próximos passos.
+2. **Ajudar a documentar:** `README.md`, `ROADMAP.md`, `DUVIDAS.md`, `AGENTS.md`
+   e `docs/`.
+3. **Tirar dúvidas:** explicar conceitos, ferramentas, erros de build e
+   comportamento do código existente.
+
+**Não escreva nem edite o código do projeto.** Isso inclui:
+
+- `source/`, `xtask/`, `tools/`, `build.rs`;
+- `Cargo.toml`, `rust-toolchain.toml`, `.cargo/config.toml`, `Makefile`;
+- `linker.ld`, `linker_aarch64.ld`, `limine.conf`, `config.h`.
+
+Se algo nesses arquivos precisa mudar, explique o problema, aponte `path:line`
+e descreva a mudança. Trechos curtos para ilustrar uma explicação são bem-vindos
+na resposta, mas não os aplique no repositório. Se Davi pedir explicitamente uma
+edição de código numa conversa, ela vale só para aquele pedido.
+
+Prefira respostas que ensinem: diga o porquê, não só o quê. O objetivo é Davi
+aprender, não receber o kernel pronto.
+
+## 2. Antes de começar
+
+- Leia `README.md`, `ROADMAP.md` e `DUVIDAS.md`.
+- Rode `git status --short --branch`. O working tree costuma ter trabalho em
+  andamento do Davi (inclusive arquivos soltos como `source/shell.rs.bak`,
+  `log`, `catkernelsource.txt`); não mexa neles.
 - Não sobrescreva, restaure, stageie ou commite alterações alheias por acidente.
   Não use `git add -A`, `git add .`, `git reset --hard` ou `git checkout --`.
-- Não faça commit/push sem pedido explícito do Davi.
-- Não implemente etapas futuras por impulso. O roadmap é a ordem de trabalho;
-  dúvidas sem resposta em `DUVIDAS.md` não são decisões aprovadas.
+- Não faça commit nem push sem pedido explícito do Davi. Quando pedido: commits
+  atômicos, só com os arquivos da tarefa, conferindo `git diff --cached
+  --name-only`; antes do push, confirme branch e remoto, e depois releia o
+  remoto e o `git status`.
+- Não planeje etapas futuras como se estivessem aprovadas. O roadmap é a ordem de
+  trabalho; dúvidas sem resposta em `DUVIDAS.md` não são decisões.
 
-### Propósito e licença
+## 3. Verdade técnica
 
-- Este repositório existe principalmente para o estudo de Davi e para auxiliar
-  seu desenvolvimento como programador. O sistema representa o que ele quer
-  aprender e construir; não é um produto estável para produção.
+- O projeto é um kernel bare-metal `#![no_std]`, não um programa Android, Linux
+  ou WASM comum. Alvos: `x86_64-unknown-none` e `aarch64-unknown-none-softfloat`,
+  ambos desde o MVP.
+- **Compilar, gerar ISO e bootar são verificações diferentes.** "Funciona" exige
+  comportamento observado e log ou teste correspondente. Não invente saídas de
+  build ou de QEMU.
+- Em toda resposta e documento, separe: código inspecionado, comando executado e
+  resultado, hipótese e o que ficou sem teste. Diga a data e se o resultado é
+  reconferido ou herdado de uma análise anterior.
+- Para comprovar uma afirmação, você pode rodar builds, `readelf`, testes e QEMU
+  **sem alterar arquivos rastreados**: use o diretório scratch para ISOs e logs,
+  `timeout --signal=KILL` externo e pare o QEMU ao terminar. Exit 137 pode ser só
+  o timeout; interprete pelo log.
+- Quando existirem scripts de teste (smoke de boot, testes de host, scripts de
+  shell/entrada), rode-os para tirar conclusões sobre funcionalidades e cite o
+  comando, a saída relevante e se passou ou falhou. Se não houver teste que
+  cubra a funcionalidade, diga isso: a leitura do código é hipótese, não prova.
+  Scripts que escrevem fora do scratch ou alteram arquivos rastreados não devem
+  ser executados sem avisar o Davi.
+- Distinga falha preexistente ou ambiental de regressão: compare com o estado
+  anterior antes de atribuir uma falha a uma mudança.
+- Não atribua licença a fontes ou recursos externos sem termos conhecidos;
+  registre a pendência.
+
+Ambiente de desenvolvimento atual: PC Linux (Arch), com QEMU x86_64/aarch64,
+`xorriso`, NASM e EDK2. O Termux é alvo do modo VNC, não o ambiente principal.
+Não presuma pacotes instalados: inspecione antes de afirmar.
+
+## 4. Decisões de projeto a respeitar ao planejar
+
+Estas já foram decididas por Davi. Não reabra nem contradiga.
+
+- **x86_64 e AArch64 desde o MVP.** Nenhuma arquitetura fica "para depois" e uma
+  arquitetura que só compila não conta como suportada.
+- **MVP = console serial interativo + Rhai.** Framebuffer só com banner até o
+  terminal gráfico. Rhai deve aceitar resultados além de `String` (`1 + 2` ->
+  `3`) e mostrar erros reais com posição.
+- **Três ambientes:** QEMU no PC, QEMU headless + VNC no Termux, e WebAssembly no
+  navegador. O navegador emula a **mesma imagem bootável** (spike com
+  `ktock/qemu-wasm`); o kernel não é recompilado para `wasm32`. `v86` upstream
+  não serve (sem 64 bits). Não prometa GitHub Pages antes de testar COOP/COEP.
+- **VNC local por padrão**; nunca exposto sem autenticação.
+- **Touch não é mouse.** Origem, fase, coordenadas, botão e tracking ID/slot são
+  preservados no driver. Mapear toque para uma ação de UI é decisão da UI.
+  Teclado físico vem antes do virtual. A existência de um dispositivo virtio no
+  QEMU não prova suporte no VNC ou no navegador: testar e documentar.
+- **Modularidade e desempenho medido.** Estética é requisito de produto, mas não
+  sacrifica correção nem medição (FPS, tempo de cópia) para adiantar efeito
+  visual.
+- **Identidade autoral.** Não imponha convenções de "SO tradicional" nem invente
+  princípios visuais; as perguntas abertas estão em `DUVIDAS.md`.
+
+Fatos técnicos que costumam gerar erro de diagnóstico:
+
+- No ARM, o Limine (base revision 6) entrega FP/SIMD desligado, enquanto o Rust
+  pode emitir NEON; o stub de entrada e os vetores de exceção são trabalho
+  pendente. QEMU ARM exige máquina `virt`, EDK2 e pelo menos 256 MiB.
+- Heap e PMM são componentes distintos. Alocadores devem ser testados em
+  fronteira (esgotamento, alinhamento, double-free) antes de se confiar neles.
+- Prompt, linha de entrada, histórico e saída são estados diferentes.
+- Geometria do terminal (fonte, célula, x/y, scroll) e dimensões do framebuffer
+  devem vir de uma fonte só; o backbuffer fixo 1920x1080 não é universal. Pixel
+  deve respeitar `bpp`, pitch e máscaras do Limine.
+- `unsafe`, `Sync`, `Send` e `static mut` precisam de invariante justificado; não
+  servem só para silenciar o compilador.
+
+Quando Davi mexer no código, lembre-o das verificações esperadas:
+
+| Tipo de mudança | Verificação |
+|---|---|
+| Rust no kernel | build release nas duas arquiteturas |
+| Boot, linker, Makefile, xtask, assembly | boot em QEMU com serial e timeout; se uma arquitetura não puder ser testada, dizer que ficou sem verificação |
+| Memória | testes em host: alocação, liberação, esgotamento, alinhamento, double-free |
+| Shell | positivos e negativos: `1 + 2` -> `3`, string concatenada, backspace, Enter repetido, erro de sintaxe com posição |
+| Gráfico | resolução menor que 1920x1080, limites, scroll, formato de pixel, captura de tela |
+| Entrada | origem, IDs, coordenadas, cancelamento, alternância mouse/touch, sem duplicação (QMP `input-send-event`) |
+
+## 5. Documentação
+
+- Atualize README e roadmap quando o estado real mudar (comandos, suporte,
+  limitações). Não transforme intenção em capacidade entregue.
+- `ROADMAP.md` é temporário: marque item concluído só com prova (comando, log ou
+  leitura do ELF). Cada pendência fica em uma única etapa.
+- Texto de documentação em português, com o estilo local. Comentários e
+  identificadores existentes podem ficar em português; não proponha renames
+  cosméticos em massa.
+- Ao citar código, use `path:line`. Seja conciso e diga o que passou, falhou e
+  ficou sem teste.
+- Convenção de interface de build ainda indefinida: `Makefile` e `xtask`
+  coexistem e a escolha é de Davi. Documente os dois como estão, sem eleger um.
+- README e roadmap informam o uso de IA neste projeto; mantenha essa descrição
+  coerente com este arquivo.
+
+## 6. Propósito e licença
+
+- O sistema representa o que Davi quer aprender e construir; não é um produto
+  estável para produção.
 - O código e a documentação original usam a licença MIT (`LICENSE`). Uso,
   estudo, modificação, redistribuição e venda de versões derivadas são
-  permitidos, inclusive em projetos fechados, desde que o aviso de copyright
-  de Davi Passos e o texto da licença sejam preservados.
-- Ao contribuir, não altere essa licença nem o copyright sem pedido explícito
-  do Davi. Preserve também os avisos de dependências, Limine, fontes TTF e
-  outros materiais de terceiros; a licença do projeto não os relicencia.
-- Não invente licença para fontes ou recursos externos sem termos conhecidos.
-  Documente origem e licença real; se estiverem ausentes, registre a pendência.
+  permitidos, inclusive em projetos fechados, desde que o aviso de copyright de
+  Davi Passos e o texto da licença sejam preservados.
+- Não altere a licença nem o copyright sem pedido explícito do Davi. Preserve os
+  avisos de dependências, Limine, fontes TTF e outros materiais de terceiros; a
+  licença do projeto não os relicencia.
 
-## 2. Verdade técnica e escopo
+## 7. Definição de pronto
 
-- O projeto é um kernel bare-metal `#![no_std]`, não um programa Android,
-  Linux ou WASM comum.
-- Arquiteturas-alvo: `x86_64-unknown-none` e `aarch64-unknown-none`, ambas desde
-  o MVP. Não volte a usar `aarch64-linux-android` para o kernel.
-- Não confunda compilar ELF, gerar ISO e bootar. Cada uma é uma verificação
-  diferente; "funciona" exige comportamento observado e log/teste correspondente.
-- Marque claramente hipóteses, código inspecionado, comandos que passaram e
-  comportamento não testado. Não invente saídas de build/QEMU.
-- Faça a menor mudança que resolve a etapa atual. Sem reescritas, reformatações
-  ou limpezas de arquivos não relacionados.
-- Preserve a identidade autoral do projeto, mas não sacrifique modularidade,
-  correção ou medição de desempenho para adiantar efeitos visuais.
+Uma tarefa de planejamento ou documentação está pronta quando:
 
-## 3. Ambiente e build
-
-Ambiente principal atual: Termux/Android em host AArch64. Rust nightly e
-`rust-src` são necessários; `rustup` pode não existir. Não presuma os pacotes
-instalados: inspecione `rustc --version`, `cargo --version`, `pkg list-installed`
-e os binários QEMU disponíveis.
-
-Comandos de build verificados na análise inicial, executados em `kernel/`:
-
-```sh
-CARGO_PROFILE_RELEASE_PANIC=abort cargo build --release \
-  --target x86_64-unknown-none -Zbuild-std=core,alloc
-
-CARGO_PROFILE_RELEASE_PANIC=abort cargo build --release \
-  --target aarch64-unknown-none -Zbuild-std=core,alloc
-```
-
-- Os dois passaram na análise inicial, com warnings. O target Android falhou na
-  linkagem; `cargo test` falhou por `panic_impl` duplicado.
-- Ao corrigir o Makefile/toolchain, torne `panic = "abort"` e `-Zbuild-std`
-  configuração explícita do projeto, em vez de depender de variáveis de shell
-  esquecidas pelo próximo desenvolvedor.
-- Não troque um erro de configuração por instalação global desnecessária de
-  pacotes. Se faltar ferramenta, explique e use o gerenciador adequado ou peça
-  confirmação quando a mudança tiver impacto fora do repositório.
-- O checkout `kernel/limine/` é gerado/ignorado e pode ter `GNUmakefile` com
-  caminho absoluto antigo. Reconfigure-o ao mover o projeto; não corrija o
-  arquivo gerado manualmente como solução definitiva.
-- Limine requer suas próprias ferramentas, incluindo NASM e mtools. Leia
-  `kernel/limine/INSTALL.md` antes de alterar seu build.
-
-## 4. Regras de implementação
-
-### Arquitetura e boot
-
-- `kernel/src/main.rs` contém `_start`; memória está em `memory.rs`/`pmm.rs`,
-  serial em `io.rs`/`debuglog.rs`, vídeo em `video.rs` e console em `shell.rs`.
-- ARM não é só mudar `cfg(target_arch)`. O entry point precisa respeitar o
-  estado entregue pelo Limine: na base revision 6, FP/SIMD começa desativado,
-  enquanto o Rust/LLVM pode emitir NEON. Prepare o stub assembly antes de
-  executar Rust que use essas instruções.
-- Exceções precisam de vetores/handlers úteis. Um laço mudo em `0x200` não é
-  diagnóstico aceitável.
-- QEMU ARM precisa de máquina `virt`, firmware EDK2 e RAM suficiente. O teste
-  inicial falhou no próprio Limine com 128 MiB; use pelo menos 256 MiB até que
-  uma configuração diferente seja comprovada.
-- TCG é o fallback portátil; KVM/aceleração deve ser opcional e detectada.
-  Firmware e caminhos do PC/Termux devem ser configuráveis.
-
-### Memória e unsafe
-
-- Heap e PMM são componentes distintos. Preserve as reservas das regiões usadas
-  pelo heap, bitmap, kernel, bootloader e framebuffer.
-- Não normalize double-free, endereço desalinhado ou acesso fora do bitmap.
-  Adicione testes de fronteira antes de confiar no alocador.
-- Não adicione `unsafe`, `Sync`, `Send` ou `static mut` apenas para silenciar o
-  compilador. Justifique o invariante e minimize referências mutáveis globais.
-- Componentes puros/testáveis devem ser separados do runtime bare-metal; não
-  remova o panic handler apenas para fazer `cargo test` passar.
-
-### Console e vídeo
-
-- Prompt, linha de entrada, histórico e saída são estados diferentes. Nunca
-  insira o prompt na string que será executada.
-- Rhai deve aceitar resultados além de `String` e exibir erros reais com
-  posição. `1 + 2` deve produzir `3`; não devolva apenas `"erro"`.
-- Fonte/célula, x/y, scroll e dimensões reais do framebuffer precisam usar uma
-  mesma geometria. O backbuffer fixo de 1920x1080 não é resolução universal.
-- Respeite `bpp`, pitch e máscaras de cor do Limine ou rejeite explicitamente
-  modos não suportados.
-- Meça FPS/tempo de cópia antes de otimizar `swap_buffers`; evite otimizações
-  grandes sem benchmark reproduzível.
-
-### Entrada futura: mouse, touch e teclado virtual
-
-- Mouse, tablet, touch e teclado têm origens diferentes. Nunca converta touch
-  em click de mouse no driver.
-- Preserve origem, fase, coordenadas, botão e tracking ID/slot. A UI pode
-  mapear toque para uma ação equivalente, mas sem perder essas informações.
-- Implemente teclado físico antes do virtual. O teclado virtual usa o mesmo
-  editor lógico, mantendo origem virtual para diagnóstico.
-- Touch exige release/cancel e captura do contato; previna mouse events de
-  compatibilidade e ativação atrás do teclado virtual.
-- No browser, preserve `PointerEvent.pointerType`, `pointerId` e `isPrimary`.
-- O QEMU expõe `virtio-keyboard-pci`, `virtio-mouse-pci`, `virtio-tablet-pci`
-  e `virtio-multitouch-pci`; a existência do dispositivo não prova suporte do
-  VNC/WebAssembly de ponta a ponta. Teste e documente limitações reais.
-
-## 5. Testes obrigatórios por tipo de mudança
-
-- Mudança Rust no kernel: build release nas duas arquiteturas, não apenas
-  `cargo check` no target padrão.
-- Mudança de boot/linker/Makefile/assembly: boot em QEMU com log serial e
-  timeout. Se o emulador de uma arch não existir, diga que ela ficou sem
-  verificação; não alegue paridade.
-- Mudança em memória: testes host de alocação, liberação, esgotamento,
-  alinhamento e double-free quando aplicável.
-- Mudança no shell: comandos positivos e negativos, incluindo `1 + 2` -> `3`,
-  string concatenada, backspace, Enter repetido e erro de sintaxe com posição.
-- Mudança gráfica: validar resolução menor que 1920x1080, limites, scroll e
-  formato de pixel; captura de tela quando houver ferramenta disponível.
-- Mudança de entrada: teste de origem, IDs, coordenadas, cancelamento,
-  alternância mouse/touch e ausência de duplicação. Use QMP
-  `input-send-event` quando possível.
-- Não declare que uma suíte antiga falhou por sua alteração sem comparar com
-  o estado anterior. Distinga falha preexistente de regressão.
-
-## 6. QEMU, VNC e WebAssembly
-
-- Rode QEMU com timeout externo (`timeout --signal=KILL`) e saída serial em
-  arquivo fora do Git. Exit 137 pode significar apenas que o timeout encerrou
-  uma VM ainda ativa; interprete pelo log, não como build failure automático.
-- Use diretório scratch para ISOs e logs temporários. Não sobrescreva artefatos
-  gerados do repositório só para investigação.
-- Pare emuladores/servidores temporários ao terminar; não deixe QEMU rodando
-  sem necessidade.
-- Interface planejada, ainda não entregue na análise inicial:
-  `make run ARCHI=...` no PC e `make run-vnc ARCHI=...` no Termux.
-- VNC deve ser local por padrão. Não exponha serviço sem autenticação.
-- Navegador deve emular a mesma imagem bootável; não reescreva o kernel para
-  `wasm32-unknown-unknown`. Priorize spike com `ktock/qemu-wasm` nas duas
-  arquiteturas antes de construir frontend.
-- `v86` upstream não suporta kernel de 64 bits. `portlandhodl/v86_64` é apenas
-  alternativa x86_64 a avaliar, não solução ARM.
-- COOP/COEP, workers, SharedArrayBuffer, firmware e compatibilidade mobile são
-  verificações do spike. Não prometa GitHub Pages antes de testar os headers.
-
-## 7. Documentação, estilo e Git
-
-- Comentários e identificadores podem continuar em português, seguindo o
-  estilo local; use snake_case para código novo e imports somente necessários.
-- Não faça renames cosméticos em massa. Renomeie tipos antigos ao tocar sua
-  implementação por uma razão funcional.
-- Atualize README/roadmap quando mudar estado real, comandos, suporte ou
-  limitações. Não transforme intenção em capacidade entregue.
-- `ROADMAP.sketch.md` é temporário; marque itens concluídos somente com prova.
-- Referencie código como `path:line` no relatório final. Seja conciso e diga
-  o que passou, falhou e ficou sem teste.
-- Faça commits atômicos por concern quando autorizado, somente com os arquivos
-  da tarefa. Antes do commit, verifique `git diff --cached --name-only`.
-- Antes do push, confirme branch e remoto; depois releia o remoto e
-  `git status` para comprovar o resultado.
-
-## 8. Definição de pronto
-
-Uma tarefa só está pronta quando:
-
-1. a mudança pedida está aplicada e limitada ao escopo;
-2. as verificações relevantes foram realmente executadas;
-3. falhas preexistentes/ambientais estão separadas de regressões;
-4. o comportamento exigido tem evidência, não apenas build;
-5. documentação afetada foi atualizada;
-6. o working tree contém somente as mudanças pretendidas mais o trabalho
-   preexistente do usuário, preservado intacto.
+1. o pedido foi atendido, sem tocar em código nem em arquivos alheios;
+2. cada afirmação técnica tem evidência (executada ou lida) ou está marcada como
+   hipótese;
+3. falhas preexistentes ou ambientais estão separadas de regressões;
+4. a documentação afetada foi atualizada e ficou coerente entre os arquivos;
+5. o working tree só tem as mudanças pretendidas mais o trabalho do Davi,
+   preservado intacto.
